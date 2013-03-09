@@ -1148,9 +1148,9 @@ void loop()
                     
                     if (
                         // the sonar said we are on the ground
-                        (failsafeLowSonarAlt > 50 * 2)
+                        (failsafeLowSonarAlt > 50 * 1)
                         // continuous (in 3 seconds) trying to descend with very high speed
-                        || (failsafeLowBaroPIDs > 50 * 3)
+                        || (failsafeLowBaroPIDs > 50 * 2)
                          // timeout failsafe landing
                         || (failsafeCnt > (5 * FAILSAFE_OFF_DELAY) )
                         // something really bad happen, drops like a rock to avoid worse result
@@ -1694,8 +1694,13 @@ void loop()
             {
                 if (f.FAILSAFE_ALTHOLD_RESET)
                 {
-                    if (EstAlt < (FAILSAFE_VARIO * FAILSAFE_OFF_DELAY / 10 / 2))
-                        failsafeVario = FAILSAFE_VARIO;
+                    if (EstAlt < (FAILSAFE_VARIO * FAILSAFE_OFF_DELAY / 10 / 2)) {
+                        // ground effect
+                        if (SonarErrors == 0 && SonarAlt < 25)
+                            failsafeVario = FAILSAFE_VARIO << 1;
+                        else 
+                            failsafeVario = FAILSAFE_VARIO;
+                    }
 
                     AltHold -= failsafeVario / 25;
                     Vario_Alt_PID_PLimit = ALT_HOLD_VARIO_MAX * 2;
