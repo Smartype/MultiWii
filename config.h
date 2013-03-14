@@ -1090,6 +1090,7 @@
 /****           Sonar                                            ****/
 /********************************************************************/
 //#define HCSR04
+#define I2C_SONAR
 //mixing values between sonar and baro
 #define SONAR_SONARFULL     (150+200) //full sonar reading before this point (cm)
 #define SONAR_BAROFULL      (300+200) //full baro reading after this point (cm)

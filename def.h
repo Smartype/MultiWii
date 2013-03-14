@@ -1714,7 +1714,7 @@ FlagType               Flag;
 #define I2C_GPS_WP15                                228
 
 
-#define I2C_GPS_ATTITUDE               				239			// uint8_t accZ (write only)
+#define I2C_GPS_ATTITUDE               				239				// 
 #define I2C_GPS_SONAR                  				244         	// sonar 
 #define I2C_GPS_OPTFLOW                				247         	// optical flow
 

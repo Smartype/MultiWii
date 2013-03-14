@@ -1601,7 +1601,7 @@ void loop()
 #endif
         case 3:
             taskOrder++;
-#if SONAR
+#if defined(SONAR) || defined(I2C_SONAR)
             Sonar_update();
 #endif
 #if GPS
@@ -1615,7 +1615,7 @@ void loop()
 #endif
         case 4:
             taskOrder++;
-#if defined (OPTFLOW)
+#if defined (OPTFLOW) || defined(I2C_OPTFLOW)
             Optflow_update();
 #endif
 #ifdef LANDING_LIGHTS_DDR
@@ -1826,7 +1826,7 @@ void loop()
                 optflow_angle[axis] = 0;
 
             // 50 degrees max inclination
-#ifdef OPTFLOW
+#if defined(OPTFLOW) || defined(I2C_OPTFLOW)
 #if defined(MAX_ANGLE_MODE_DEGREE)
             errorAngle = constrain(2 * rcCommand[axis] + GPS_angle[axis] - optflow_angle[axis],
                                    - MAX_ANGLE_MODE_DEGREE * 10, MAX_ANGLE_MODE_DEGREE * 10) - angle[axis] + conf.angleTrim[axis]; //16 bits is ok here

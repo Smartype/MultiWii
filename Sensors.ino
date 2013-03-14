@@ -2037,10 +2037,84 @@ void Sonar_update()
     debug[1] = SonarErrors;
 }
 
+#elif defined(I2C_SONAR)
+void Sonar_update() {
+    // TODO: update interval
+
+    // Update cosZ
+    i2c_rep_start(I2C_GPS_ADDRESS << 1);
+    /*
+        uint8_t              cosZ;
+        int16_t              angle[2];
+    */
+    i2c_write(I2C_GPS_ATTITUDE);
+    i2c_write(cosZ);
+
+    // Read sonar info
+    i2c_rep_start(I2C_GPS_ADDRESS << 1);
+    i2c_write(I2C_GPS_SONAR);
+    i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1); 
+     /*
+        uint8_t               errors;
+        uint16_t              distance;
+    */
+    uint8_t *varptr = (uint8_t *)&SonarErrors;
+    *varptr++ = i2c_readAck();
+
+    varptr = (uint8_t *)&SonarAlt;
+    *varptr++ = i2c_readAck();
+    *varptr   = i2c_readNak();
+
+}
 #else
 inline void Sonar_init() {}
 inline void Sonar_update() {}
 #endif
+#endif
+
+#if defined(I2C_OPTFLOW)
+void Optflow_update() {
+
+    if (f.GPS_HOLD_MODE) {
+        // cosZ already updated, ignore it
+
+        // send angle info
+        i2c_rep_start(I2C_GPS_ADDRESS << 1);
+        i2c_write(I2C_GPS_ATTITUDE + sizeof(uint8_t));
+
+        uint8_t *varptr = (uint8_t *)&(angle[ROLL]);
+        i2c_write(*varptr++);
+        i2c_write(*varptr);
+
+        varptr = (uint8_t *)&(angle[PITCH]);
+        i2c_write(*varptr++);
+        i2c_write(*varptr);
+
+        // read optflow result
+        i2c_rep_start(I2C_GPS_ADDRESS << 1);
+        i2c_write(I2C_GPS_OPTFLOW);
+        i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1); 
+        /*
+            int16_t              angle[2];
+            uint8_t              P8;
+            uint8_t              I8;    
+            uint8_t              paused;
+        */    
+
+        varptr = (uint8_t *)&(optflow_angle[ROLL]);
+        *varptr++ = i2c_readAck();
+        *varptr   = i2c_readAck();    
+
+        varptr = (uint8_t *)&(optflow_angle[PITCH]);
+        *varptr++ = i2c_readAck();
+        *varptr   = i2c_readNak();    
+
+    }
+    else {
+        optflow_angle[ROLL] = 0;
+        optflow_angle[PITCH] = 0;
+    }
+}
 #endif
 
 #ifdef OPTFLOW
