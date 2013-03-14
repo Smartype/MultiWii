@@ -2074,7 +2074,8 @@ inline void Sonar_update() {}
 
 #if defined(I2C_OPTFLOW)
 void Optflow_update() {
-
+    // TODO: update interval
+    
     if (f.GPS_HOLD_MODE) {
         // cosZ already updated, ignore it
 
@@ -2100,7 +2101,6 @@ void Optflow_update() {
             uint8_t              I8;    
             uint8_t              paused;
         */    
-
         varptr = (uint8_t *)&(optflow_angle[ROLL]);
         *varptr++ = i2c_readAck();
         *varptr   = i2c_readAck();    
