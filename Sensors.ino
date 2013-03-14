@@ -2073,10 +2073,17 @@ inline void Sonar_update() {}
 #endif
 
 #if defined(I2C_OPTFLOW)
+void Optflow_set_paused(uint8_t paused) {
+    i2c_rep_start(I2C_GPS_ADDRESS << 1);
+    i2c_write(I2C_GPS_OPTFLOW + sizeof(int16_t) * 2 + sizeof(uint8_t) + sizeof(uint8_t));
+    i2c_write(paused);
+}
+
 void Optflow_update() {
     // TODO: update interval
-    
-    if (f.GPS_HOLD_MODE) {
+
+    // When GPS fix is lost, GPSHOLD mode is disabled
+    if (rcOptions[BOXGPSHOLD]) {
         // cosZ already updated, ignore it
 
         // send angle info
