@@ -682,6 +682,14 @@ void GPS_set_pids()
     i2c_write(conf.I8[PIDNAVR]);
     i2c_write(conf.D8[PIDNAVR]);
 
+#if defined(I2C_OPTFLOW)
+    // Update optflow pid
+    i2c_rep_start(I2C_GPS_ADDRESS << 1);
+    i2c_write(I2C_GPS_OPTFLOW + sizeof(int16_t) * 2);
+    i2c_write(conf.P8[PIDVEL]);
+    i2c_write(conf.I8[PIDVEL]);
+#endif
+
     GPS_I2C_command(I2C_GPS_COMMAND_UPDATE_PIDS, 0);
 
     uint8_t nav_flags = 0;
@@ -701,6 +709,7 @@ void GPS_set_pids()
     i2c_write(GPS_WP_RADIUS & 0x00FF); // lower eight bit
     i2c_write(GPS_WP_RADIUS >> 8); // upper eight bit
 #endif
+
 }
 
 #if defined (TINY_GPS)
