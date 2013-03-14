@@ -1678,6 +1678,25 @@ void loop()
     else magHold = heading;
 #endif
 
+#if defined(I2C_OPTFLOW)
+    if (rcOptions[BOXGPSHOLD]) {
+        static uint8_t ofpaused = 0;
+        if (abs(rcCommand[YAW]) > OF_YAW_DEADBAND) {
+            if (!ofpaused) {
+                ofpaused = 1;
+                Optflow_set_paused(ofpaused);
+            }
+        }
+        else {
+            if (ofpaused) {
+                ofpaused = 0;
+                Optflow_set_paused(ofpaused);
+            }
+        }
+    }
+    
+#endif
+
 #if BARO
 #if (!defined(SUPPRESS_BARO_ALTHOLD))
     if (f.BARO_MODE)

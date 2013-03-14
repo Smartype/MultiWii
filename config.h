@@ -1104,6 +1104,8 @@
 #define I2C_OPTFLOW   
 //#define OPTFLOW             ADNS_5050
 
+#define OF_YAW_DEADBAND 	40
+
 #define OF_SCLK             A2
 #define OF_SDIO             A1
 #define OF_NCS              A0 
