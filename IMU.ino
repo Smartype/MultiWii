@@ -331,6 +331,8 @@ void getEstimatedAttitude()
     angle[ROLL]  = _atan2(EstG32.V.X , EstG32.V.Z);
     angle[PITCH] = _atan2(EstG32.V.Y , invmagXZ * sqGX_sqGZ);
 
+    cosZ =  EstG32.V.Z * invG * 100.0f; // cos(angleZ) * 100.
+
 #if MAG
     heading = _atan2(
                   EstM32.V.Z * EstG32.V.X - EstM32.V.X * EstG32.V.Z,

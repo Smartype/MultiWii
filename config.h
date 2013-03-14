@@ -671,7 +671,7 @@
    including some navigation functions
    contribution from EOSBandi   http://code.google.com/p/i2c-gps-nav/
    You have to use at least I2CGpsNav code r33 */
-//#define I2C_GPS
+#define I2C_GPS
 
 /* I2C GPS device made with an indeedent ATTiny[24]313 + GPS device and
    optional sonar device.    https://github.com/wertarbyte/tiny-gps/ */
@@ -1089,7 +1089,7 @@
 /********************************************************************/
 /****           Sonar                                            ****/
 /********************************************************************/
-#define HCSR04
+//#define HCSR04
 //mixing values between sonar and baro
 #define SONAR_SONARFULL     (150+200) //full sonar reading before this point (cm)
 #define SONAR_BAROFULL      (300+200) //full baro reading after this point (cm)
@@ -1099,7 +1099,9 @@
 #define ADNS_5020           5020
 #define ADNS_5050           5050
 #define OF_DEBUG
-#define OPTFLOW             ADNS_5050
+
+#define I2C_OPTFLOW   
+//#define OPTFLOW             ADNS_5050
 
 #define OF_SCLK             A2
 #define OF_SDIO             A1
@@ -1114,6 +1116,7 @@
 #define OF_ROTATE_I
 /* Low-pass filter factor to prevent shaking. Possible values 1..8.  Default is 5. */
 #define OF_LPF_FACTOR 5
+
 /* Debug to GUI */
 
 //ESC Refresh rate to 432Hz

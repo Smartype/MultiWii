@@ -281,7 +281,9 @@ struct flags_struct
     uint8_t SMALL_ANGLES_25 : 1 ;
     uint8_t CALIBRATE_MAG : 1 ;
     uint8_t VARIO_MODE : 1;
+#if defined(OPTFLOW)
     uint8_t OPTFLOW_MODE: 1;
+#endif
     uint8_t FAILSAFE_RUNNING: 1;
     uint8_t FAILSAFE_ALTHOLD_RESET: 1;
     uint8_t ALT_HOLD_CHANGING: 1;
@@ -538,7 +540,7 @@ static uint8_t SonarErrors = 0; // errors count (0..SONAR_ERROR_MAX).
 static t_avg_var16 baroSonarDiff = {0, 0};
 #endif
 
-#ifdef OPTFLOW
+#if defined(OPTFLOW) || defined(I2C_OPTFLOW)
 /*  Angles of correction */
 static int16_t optflow_angle[2] = { 0, 0 };
 #endif
@@ -1819,6 +1821,10 @@ void loop()
     {
         if ((f.ANGLE_MODE || f.HORIZON_MODE) && axis < 2 ) // MODE relying on ACC
         {
+            // Apply optflow only if GPSHOLD is checked, no matter fix
+            if (rcOptions[BOXGPSHOLD] == 0)
+                optflow_angle[axis] = 0;
+
             // 50 degrees max inclination
 #ifdef OPTFLOW
 #if defined(MAX_ANGLE_MODE_DEGREE)
