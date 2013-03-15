@@ -2039,29 +2039,28 @@ void Sonar_update()
 
 #elif defined(I2C_SONAR)
 void Sonar_update() {
-    // TODO: update interval
+    
+    uint32_t now = millis();
 
-    // Update cosZ
+    if (SonarTimer > now)
+        return;
+
+    //update sonar readings every 50ms
+    SonarTimer = now + 50;
+
+    // Read sonar error 
     i2c_rep_start(I2C_GPS_ADDRESS << 1);
-    /*
-        uint8_t              cosZ;
-        int16_t              angle[2];
-    */
-    i2c_write(I2C_GPS_ATTITUDE);
-    i2c_write(cosZ);
+    i2c_write(I2C_GPS_EXT_STATUS);
+    i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
+    uint8_t var = i2c_readNak();
+    EXT_STATUS_REGISTER *reg = (EXT_STATUS_REGISTER*)&var;
+    SonarErrors = reg->sonar_errors;
 
     // Read sonar info
     i2c_rep_start(I2C_GPS_ADDRESS << 1);
     i2c_write(I2C_GPS_SONAR);
     i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1); 
-     /*
-        uint8_t               errors;
-        uint16_t              distance;
-    */
-    uint8_t *varptr = (uint8_t *)&SonarErrors;
-    *varptr++ = i2c_readAck();
-
-    varptr = (uint8_t *)&SonarAlt;
+    uint8_t* varptr = (uint8_t *)&SonarAlt;
     *varptr++ = i2c_readAck();
     *varptr   = i2c_readNak();
 
@@ -2075,22 +2074,33 @@ inline void Sonar_update() {}
 #if defined(I2C_OPTFLOW)
 
 void Optflow_set_paused(uint8_t paused) {
+    // Read ext_status
     i2c_rep_start(I2C_GPS_ADDRESS << 1);
-    i2c_write(I2C_GPS_OPTFLOW + sizeof(int16_t) * 2 + sizeof(uint8_t) + sizeof(uint8_t));
-    i2c_write(paused);
+    i2c_write(I2C_GPS_EXT_STATUS);
+    i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
+    uint8_t var = i2c_readNak();
+    EXT_STATUS_REGISTER *reg = (EXT_STATUS_REGISTER*)&var;
+
+    // Update
+    if (reg->optflow_pause != paused) {
+        reg->optflow_pause = paused;    
+
+        i2c_rep_start(I2C_GPS_ADDRESS << 1);
+        i2c_write(I2C_GPS_EXT_STATUS);
+        i2c_write(*((uint8_t*)reg));
+    }
 }
 
 void Optflow_update() {
-    // TODO: update interval
+
+    // Update cosZ
+    i2c_rep_start(I2C_GPS_ADDRESS << 1);
+    i2c_write(I2C_GPS_ATTITUDE);
+    i2c_write(cosZ);
 
     // When GPS fix is lost, GPSHOLD mode is disabled
     if (rcOptions[BOXGPSHOLD]) {
-        // cosZ already updated, ignore it
-
         // send angle info
-        i2c_rep_start(I2C_GPS_ADDRESS << 1);
-        i2c_write(I2C_GPS_ATTITUDE + sizeof(uint8_t));
-
         uint8_t *varptr = (uint8_t *)&(angle[ROLL]);
         i2c_write(*varptr++);
         i2c_write(*varptr);
@@ -2099,24 +2109,26 @@ void Optflow_update() {
         i2c_write(*varptr++);
         i2c_write(*varptr);
 
-        // read optflow result
+        // Read ext_status
         i2c_rep_start(I2C_GPS_ADDRESS << 1);
-        i2c_write(I2C_GPS_OPTFLOW);
-        i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1); 
-        /*
-            int16_t              angle[2];
-            uint8_t              P8;
-            uint8_t              I8;    
-            uint8_t              paused;
-        */    
+        i2c_write(I2C_GPS_EXT_STATUS);
+        i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
+        uint8_t var = i2c_readAck();
+        EXT_STATUS_REGISTER *reg = (EXT_STATUS_REGISTER*)&var;
+        if (reg->optflow_available == 0) {
+            i2c_readNak();
+            optflow_angle[ROLL] = 0;
+            optflow_angle[PITCH] = 0;
+            return;
+        }
+
         varptr = (uint8_t *)&(optflow_angle[ROLL]);
         *varptr++ = i2c_readAck();
         *varptr   = i2c_readAck();    
 
         varptr = (uint8_t *)&(optflow_angle[PITCH]);
         *varptr++ = i2c_readAck();
-        *varptr   = i2c_readNak();    
-
+        *varptr   = i2c_readNak();
     }
     else {
         optflow_angle[ROLL] = 0;

@@ -685,7 +685,7 @@ void GPS_set_pids()
 #if defined(I2C_OPTFLOW)
     // Update optflow pid
     i2c_rep_start(I2C_GPS_ADDRESS << 1);
-    i2c_write(I2C_GPS_OPTFLOW + sizeof(int16_t) * 2);
+    i2c_write(I2C_GPS_OPTFLOW + sizeof(int16_t) * 2);   // Skip angle[2]
     i2c_write(conf.P8[PIDVEL]);
     i2c_write(conf.I8[PIDVEL]);
 #endif

@@ -534,9 +534,10 @@ typedef struct avg_var8
 } t_avg_var8;
 
 
-#ifdef SONAR
+#if SONAR || defined(I2C_SONAR)
 static int16_t SonarAlt = 0; // distance, cm (0..SONAR_MAX_DISTANCE)
 static uint8_t SonarErrors = 0; // errors count (0..SONAR_ERROR_MAX).
+static uint32_t SonarTimer = 0;
 static t_avg_var16 baroSonarDiff = {0, 0};
 #endif
 
@@ -1601,7 +1602,7 @@ void loop()
 #endif
         case 3:
             taskOrder++;
-#if defined(SONAR) || defined(I2C_SONAR)
+#if SONAR || defined(I2C_SONAR)
             Sonar_update();
 #endif
 #if GPS
@@ -1840,12 +1841,13 @@ void loop()
     {
         if ((f.ANGLE_MODE || f.HORIZON_MODE) && axis < 2 ) // MODE relying on ACC
         {
-            // Apply optflow only if GPSHOLD is checked, no matter fix
+             // 50 degrees max inclination
+#if defined(OPTFLOW) || defined(I2C_OPTFLOW)
+
+           // Apply optflow only if GPSHOLD is checked, no matter fix
             if (rcOptions[BOXGPSHOLD] == 0)
                 optflow_angle[axis] = 0;
 
-            // 50 degrees max inclination
-#if defined(OPTFLOW) || defined(I2C_OPTFLOW)
 #if defined(MAX_ANGLE_MODE_DEGREE)
             errorAngle = constrain(2 * rcCommand[axis] + GPS_angle[axis] - optflow_angle[axis],
                                    - MAX_ANGLE_MODE_DEGREE * 10, MAX_ANGLE_MODE_DEGREE * 10) - angle[axis] + conf.angleTrim[axis]; //16 bits is ok here
@@ -1860,6 +1862,10 @@ void loop()
 #else
             errorAngle = constrain(2 * rcCommand[axis] + GPS_angle[axis], -500, +500) - angle[axis] + conf.angleTrim[axis]; //16 bits is ok here
 #endif
+            /*
+            // the angles should be used only once
+            optflow_angle[axis] = 0;
+            */
 #endif
 
             PTermACC = (int32_t)errorAngle * conf.P8[PIDLEVEL] / 100;                      // 32 bits is needed for calculation: errorAngle*P8[PIDLEVEL] could exceed 32768   16 bits is ok for result
