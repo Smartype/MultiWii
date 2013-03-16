@@ -336,6 +336,7 @@ void GPS_NewData()
 
     GPS_numSat = (_i2c_gps_status & 0xf0) >> 4;
     _i2c_gps_status = i2c_readReg(I2C_GPS_ADDRESS, I2C_GPS_STATUS_00);                //Get status register
+    
     if (_i2c_gps_status & I2C_GPS_STATUS_3DFIX)                                       //Check is we have a good 3d fix (numsats>5)
     {
         f.GPS_FIX = 1;

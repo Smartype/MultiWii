@@ -259,7 +259,7 @@ static uint32_t  ArmedTimeWarningMicroSeconds = 0;
 #endif
 
 static int16_t  debug[4];
-static int16_t  sonarAlt; //to think about the unit
+//static int16_t  sonarAlt; //to think about the unit
 
 struct flags_struct
 {

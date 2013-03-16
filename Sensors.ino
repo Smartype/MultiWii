@@ -1962,7 +1962,7 @@ void Sonar_update()
               debug[0] = SonarAlt;
               debug[1] = SonarErrors;
         */
-        debug[1] = SonarErrors;
+        //debug[1] = SonarErrors;
         return;
     }
 
@@ -2053,8 +2053,7 @@ void Sonar_update() {
     i2c_write(I2C_GPS_EXT_STATUS);
     i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
     uint8_t var = i2c_readNak();
-    EXT_STATUS_REGISTER *reg = (EXT_STATUS_REGISTER*)&var;
-    SonarErrors = reg->sonar_errors;
+    SonarErrors = ((var & 0x3C) >> 2);
 
     // Read sonar info
     i2c_rep_start(I2C_GPS_ADDRESS << 1);
@@ -2063,6 +2062,9 @@ void Sonar_update() {
     uint8_t* varptr = (uint8_t *)&SonarAlt;
     *varptr++ = i2c_readAck();
     *varptr   = i2c_readNak();
+
+    debug[0] = SonarAlt;
+    debug[1] = SonarErrors;
 
 }
 #else
@@ -2079,15 +2081,15 @@ void Optflow_set_paused(uint8_t paused) {
     i2c_write(I2C_GPS_EXT_STATUS);
     i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
     uint8_t var = i2c_readNak();
-    EXT_STATUS_REGISTER *reg = (EXT_STATUS_REGISTER*)&var;
 
     // Update
-    if (reg->optflow_pause != paused) {
-        reg->optflow_pause = paused;    
+    #define OPTFLOW_PAUSED(x) (x & 1)
+    if (OPTFLOW_PAUSED(var) != paused) {    
+        var = ((var & ~1)|paused);
 
         i2c_rep_start(I2C_GPS_ADDRESS << 1);
         i2c_write(I2C_GPS_EXT_STATUS);
-        i2c_write(*((uint8_t*)reg));
+        i2c_write(var);
     }
 }
 
@@ -2100,6 +2102,7 @@ void Optflow_update() {
 
     // When GPS fix is lost, GPSHOLD mode is disabled
     if (rcOptions[BOXGPSHOLD]) {
+        
         // send angle info
         uint8_t *varptr = (uint8_t *)&(angle[ROLL]);
         i2c_write(*varptr++);
@@ -2114,26 +2117,33 @@ void Optflow_update() {
         i2c_write(I2C_GPS_EXT_STATUS);
         i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
         uint8_t var = i2c_readAck();
-        EXT_STATUS_REGISTER *reg = (EXT_STATUS_REGISTER*)&var;
-        if (reg->optflow_available == 0) {
+
+        #define OPTFLOW_AVAILABLE(x)      (x & (1<<1))
+
+        if (OPTFLOW_AVAILABLE(var)) {
+            
+            varptr = (uint8_t *)&(optflow_angle[ROLL]);
+            *varptr++ = i2c_readAck();
+            *varptr   = i2c_readAck();    
+
+            varptr = (uint8_t *)&(optflow_angle[PITCH]);
+            *varptr++ = i2c_readAck();
+            *varptr   = i2c_readNak();
+
+            debug[2] = optflow_angle[ROLL];
+            debug[3] = optflow_angle[PITCH];    
+        }
+        else {
             i2c_readNak();
             optflow_angle[ROLL] = 0;
             optflow_angle[PITCH] = 0;
-            return;
         }
-
-        varptr = (uint8_t *)&(optflow_angle[ROLL]);
-        *varptr++ = i2c_readAck();
-        *varptr   = i2c_readAck();    
-
-        varptr = (uint8_t *)&(optflow_angle[PITCH]);
-        *varptr++ = i2c_readAck();
-        *varptr   = i2c_readNak();
     }
     else {
         optflow_angle[ROLL] = 0;
         optflow_angle[PITCH] = 0;
     }
+
 }
 #endif
 
@@ -2309,12 +2319,6 @@ inline void optflow_get_vel()
         EstHVel[axis] = constrain(avgVel[axis].res, -100, 100);
         prevAngle[axis] = angle[axis];
     }
-
-#ifdef OF_DEBUG
-    debug[2] = optflow_pos[ROLL];
-    debug[3] = optflow_pos[PITCH];
-    //debug[2] = avgSqual.res;
-#endif
 }
 
 /* Convert row data to displacment (in mm*10 on height 1m)  since last call */

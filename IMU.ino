@@ -382,9 +382,9 @@ uint8_t getEstimatedAltitude()
     // see: https://code.google.com/p/ardupilot-mega/source/browse/libraries/AP_Baro/AP_Baro.cpp
     BaroAlt = log( baroGroundPressure * (BARO_TAB_SIZE - 1) / (float)baroPressureSum ) * (baroTemperature + 27315) * 29.271267f; // in cemtimeter
 
-#if SONAR
+#if SONAR || defined(I2C_SONAR)
     EstBaroAlt = (EstBaroAlt * 6 + BaroAlt * 2) >> 3; // additional LPF to reduce baro noise (faster by 30 µs)
-    debug[0] = EstBaroAlt;
+    //debug[0] = EstBaroAlt;
 
     // Get difference between sonar and baro and slightly average it in time
     if (SonarErrors < SONAR_ERROR_MAX)
@@ -421,6 +421,8 @@ uint8_t getEstimatedAltitude()
         // Sonar is crasy, so use baro only + sonar value on the end of limits
         EstAlt = EstBaroAlt + constrain(baroSonarDiff.res, -(300+150), (300+150));
     }
+#else
+    EstAlt = (EstAlt * 6 + BaroAlt * 2) >> 3; // additional LPF to reduce baro noise (faster by 30 µs)
 #endif
 
 #if (defined(VARIOMETER) && (VARIOMETER != 2)) || !defined(SUPPRESS_BARO_ALTHOLD)

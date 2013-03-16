@@ -610,7 +610,7 @@
 
 /*************************    INFLIGHT ACC Calibration    *****************************/
 /* This will activate the ACC-Inflight calibration if unchecked */
-#define INFLIGHT_ACC_CALIBRATION
+//#define INFLIGHT_ACC_CALIBRATION
 
 /**************************    Disable WMP power pin     *******************************/
 /* disable use of the POWER PIN

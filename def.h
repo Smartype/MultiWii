@@ -1716,14 +1716,6 @@ FlagType               Flag;
 // Eric
 #define I2C_GPS_ATTITUDE               239			// uint8_t accZ + angle[2]
 #define I2C_GPS_EXT_STATUS			   244			// uint8
-typedef struct
-{
-    uint8_t    optflow_pause: 1;
-    uint8_t    optflow_available: 1;    
-    uint8_t    sonar_errors: 4;        
-    uint8_t    reserved: 2;
-} EXT_STATUS_REGISTER;
-
 #define I2C_GPS_OPTFLOW                245         	// angle[2], P, I
 #define I2C_GPS_SONAR                  251         	// uint16_t
 
