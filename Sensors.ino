@@ -2101,7 +2101,7 @@ void Optflow_update() {
     i2c_write(cosZ);
 
     // When GPS fix is lost, GPSHOLD mode is disabled
-    if (rcOptions[BOXGPSHOLD]) {
+    if (rcOptions[BOXGPSHOLD] && rcOptions[BOXGPSHOME] == 0) {
         
         // send angle info
         uint8_t *varptr = (uint8_t *)&(angle[ROLL]);

@@ -567,12 +567,34 @@
    and motors is stopped. If RC pulse coming back before reached FAILSAFE_OFF_DELAY time, after the small quard time the RC control is returned to normal. */
 #define FAILSAFE                                        // uncomment  to activate the failsafe function
 #define FAILSAFE_DELAY          10                      // Guard time for failsafe activation after signal lost. 1 step = 0.1sec - 1sec in example
-#define FAILSAFE_OFF_DELAY      300                     // Time for Landing before motors stop in 0.1sec. 1 step = 0.1sec - 20sec in example
+#define FAILSAFE_OFF_DELAY      450                     // Time for Landing before motors stop in 0.1sec. 1 step = 0.1sec - 20sec in example
 #define FAILSAFE_THROTTLE       (MINTHROTTLE + 400)     // 1470 // (*) Throttle level used for landing - may be relative to MINTHROTTLE - as in this case
 /*****************                Failsafe descending to the ground by BARO          *********************************/
 #define FAILSAFE_VARIO          35                      // desceding speed, in cm/s      
 #define FAILSAFE_SONAR_ALT      5
 #define FAILSAFE_MAX_RISING_ALT 500
+
+
+/*****************                Failsafe descending to the ground by BARO          *********************************/
+/* For vario-controlled descending instead of having a fix throttle value, uncomment FAILSAFE_ALT_MODE. This allows to descend with preset vario.
+   When flying on high altitudes, and would like to descend faster than apply FAILSAFE_SAFE_ALT and FAILSAFE_FAST_VARIO.
+     This case will let copter descend faster from high altitude till reach the safety altitude, after will slow down to slow vario.
+   If you have GPS and would like to have RTH activated when in failsafe, uncomment FAILSAFE_RTH_MODE. Please note that in this case FAILSAFE_ALT_MODE doesn't have to be uncommented,
+     if GPS signal is weak, failsafe will work in FAILSAFE_ALT_MODE.
+   Both with work only with FAILSAFE uncommented! Also Please note that both modes will work even if SUPPRESS_BARO_ALTHOLD is uncommented, so you can still save some space with better failsafe alt handling!
+
+   Please note that FAILSAFE_OFF_DELAY is still active for security reasons, so set up long time enough to be able to RTH before this timer ends because motors will stop!!!*/
+
+#define FAILSAFE_ALT_MODE             // uncomment for descending with constant vario if in Failsafe - use with FAILSAFE and define the FAILSAFE_SLOW_VARIO
+#define FAILSAFE_SLOW_VARIO   50      // in cm/s - slow desceding speed under SAFETY_ALT, this is default is SAFETY_ALT is not used.  - maximum 250!!!
+#define FAILSAFE_FAST_VARIO   100     // in cm/s - fast desceding speed over SAFETY_ALT, maximum 250!!!
+#define FAILSAFE_SAFETY_ALT   100     // in cm   - safety altitude, where to slow down descending before landing, in cm!!!
+
+#define FAILSAFE_RTH_MODE             // if GPS present and ready, copter starts RTH when signal lost. When signal is back, control is back again.
+#define FAILSAFE_RTH_VARIO    100     // in cm/s - vario for RTH function for failsafe, maximum 250!!!
+#define FAILSAFE_RTH_ALT      1000    // in cm   - minimum RTH altitude for failsafe. If copter is higher than this, it will keep altitude.
+#define FAILSAFE_RTH_HOME     400     // in cm   - home altitude for RTH, copter will descend to this altitude and wait.
+#define FAILSAFE_RTH_DELAY    15      // in s    - safety delay, after reaching HOME altitude, it'll land in FAILSAFE_ALT_MODE when safety delay terminates.
 
 
 
@@ -687,9 +709,10 @@
   - No GPS FIX -> LED blink at speed of incoming GPS frames
   - Fix and sat no. bellow 5 -> LED off
   - Fix and sat no. >= 5 -> LED blinks, one blink for 5 sat, two blinks for 6 sat, three for 7 ... */
-#define GPS_LED_INDICATOR
+//#define GPS_LED_INDICATOR     // done on i2c nav
 
-//#define USE_MSP_WP                        //Enables the MSP_WP command, which is used by WinGUI to display and log Home and Poshold positions
+// Set/get waypoint
+#define USE_MSP_WP                        //Enables the MSP_WP command, which is used by WinGUI to display and log Home and Poshold positions
 
 //#define DONT_RESET_HOME_AT_ARM             // HOME position is reset at every arm, uncomment it to prohibit it (you can set home position with GyroCalibration)
 
@@ -704,7 +727,7 @@
    Convert the degree+minutes into decimal degree by ==> degree+minutes*(1/60)
    Note the sign on declination it could be negative or positive (WEST or EAST) */
 //#define MAG_DECLINIATION  3.96f              //For Budapest Hungary.
-#define MAG_DECLINIATION          -5.18f       // For Ningbo, Zhejiang, China -5 deg 11 min -> -5.183333333333333
+#define MAG_DECLINIATION      -5.18f       // For Ningbo, Zhejiang, China -5 deg 11 min -> -5.183333333333333
 
 #define GPS_LEAD_FILTER                      // Adds a forward predictive filterig to compensate gps lag. Code based on Jason Short's lead filter implementation
 
@@ -739,7 +762,7 @@
 //#define OLED_I2C_128x64 // I2C LCD: OLED http://www.multiwii.com/forum/viewtopic.php?f=7&t=1350
 
 /******************************   Display settings   ***********************************/
-#define LCD_SERIAL_PORT 0    // must be 0 on Pro Mini and single serial boards; Set to your choice on any Mega based board
+//#define LCD_SERIAL_PORT 0    // must be 0 on Pro Mini and single serial boards; Set to your choice on any Mega based board
 
 //#define SUPPRESS_OLED_I2C_128x64LOGO  // suppress display of OLED logo to save memory
 
@@ -747,7 +770,6 @@
  * The lower part of each page is accessible under the name of shifted keyboard letter :
  * 1 - ! , 2 - @ , 3 - # , 4 - $ , 5 - % , 6 - ^ , 7 - & , 8 - * , 9 - (
  * You must add both to your lcd.telemetry.* sequences
- *
  */
 //#define DISPLAY_FONT_DSIZE //currently only aplicable for OLED_I2C_128x64
 
@@ -894,8 +916,34 @@
  In this code the complete altitude hold code runs on 25Hz.
  The RTH code uses defined altitude during approach.  */
 
-/********** user tunable parameters ************/
+/* Experimental altitude hold code. It uses "vario mode" which means reising/descending vario relates to the throttle stick position.
+   When RTH_ALT_MODE is uncommented, in RTH mode copter rises to defined altitude, and when reaches the target, descends back to defined home altitude.
+     By deffault, copter descends back to RTH altitude, if is higher. When RTH_KEEP_ALT is uncommented,
+     it means copter will keep altitude if higher than RTH_ALT. Only descends when reached home.
+   Please note that these modes can be used separated! (So for example, when only RTH_MODE is uncommented, it will return as described previously but for BARO mode
+     natural alt change will be used.
+   For working RTH_ALT_MODE Baro should be enabled with switch!
+   If none of them are uncommented, natural alt change will be used for rapid pilots. It's temporary switch OFF the althold when throttle stick is
+     out of deadband defined with ALT_HOLD_THROTTLE_NEUTRAL_ZONE 
+*/
 
+/********** user tunable parameters ************/
+#define VARIO_ALT_MODE                          // define ALT HOLD code
+//#define VARIO_MODE_CHANGE_BEEP                  // beep if changing between rising/descending  - long beep when entering hoover mode, short beep when changing between rising/descending
+#define ALT_VARIO_MAX                     200   // in cm/s  - maximum rising/descending vario when full throttle applied  -  maximum 250!!!
+#define ALT_HOLD_THROTTLE_NEUTRAL_ZONE    50    // in us    - deadband of stick around hovering point when in ALT HOLD is active (us in PWM signal)
+//#define ALT_HOLD_THROTTLE_MIDPOINT        1500  // in us    - if uncommented, this value is used in ALT_HOLD for throttle stick middle point instead of initialThrottleHold parameter.
+
+#define RTH_ALT_MODE                            // define RTH custom approach height
+#define RTH_KEEP_ALT                            // if the altitude is higher than the RTH_ALT, copter maintains that altitude instead of descending to target - according to Dramida's request
+#define RTH_VARIO      100                      // in cm/s  - vario used for reaching target altitudes during RTH - maximum 250!!!
+#define RTH_ALT        1000                     // in cm    - altitude during approach
+#define HOME_ALT       400                      // in cm    - altitude after reaching home position
+
+//#define WP_ALT_MODE                             // define WP mode - approach WP altitude with WP vario - USE WITH EZ-GUI and RTH_ALT_MODE
+#define WP_VARIO       100                      // in cm/s  - vario used for reaching WP altitude - maximum 250!!!
+
+#define ALT_SAFETY_DEADBAND      150            // deadband for RTH mode and WP mode. In emergency situations control can be get back with throttle stick
 
 
 /********** Angle Correction on Throttle ************/
@@ -916,6 +964,27 @@
  * altitude proportional to stick movement (+/-100 throttle gives about +/-50 cm in 1 second with cycle time about 3-4ms)
  */
 //#define ALTHOLD_FAST_THROTTLE_CHANGE
+
+/********************************************************************/
+/****           autoland function                                ****/
+/********************************************************************/
+
+/* This feature enables AUTOLAND BOXITEM.
+ * Use together with RTH_ALT_MODE!
+ * Works with valid GPS data only!
+ * when AUTOLAND is active, RTH mode will be activated, so copter first move to home WP, then starts to descend
+ * over SAFETY_ALT vario is the defined FAST_VARIO, under the SLOW_VARIO. This is for slowing down copter before land
+ * the trigger for disarm is the BaroPID value. When copter can't descend anymore (touched the ground),
+   the RPM will slow down until it reaches low BaroPID enough for DISARM.
+ * Please note that for security reasons, SAFETY DEADBAND is applied, it throttle stick is out of deadband the automatic altitude control will be disabled
+ */
+
+#define AUTOLAND
+#define AUTOLAND_FAST_VARIO       100  // vario over safety alt (cm/s)
+#define AUTOLAND_SLOW_VARIO       25   // vario under safety alt (cm/s)
+#define AUTOLAND_SAFETY_ALT       400  // safety altitude (cm)
+#define AUTOLAND_SAFETY_DEADBAND  100  // deadband for AUTOLAND mode. See in description.
+
 
 /********************************************************************/
 /****           altitude variometer                              ****/
@@ -1072,8 +1141,8 @@
    Warning: this creates a special version of MultiWii Code
    You cannot fly with this special version. It is only to be used for calibrating ESCs
    Read How To at http://code.google.com/p/multiwii/wiki/ESCsCalibration */
-#define ESC_CALIB_LOW  MINCOMMAND
-#define ESC_CALIB_HIGH 2000
+//#define ESC_CALIB_LOW  MINCOMMAND
+//#define ESC_CALIB_HIGH 2000
 //#define ESC_CALIB_CANNOT_FLY  // uncomment to activate
 
 /****           internal frequencies                             ****/

@@ -39,31 +39,30 @@ static uint8_t tail_debug;
 
 //to multiwii developpers/committers : do not add new MSP messages without a proper argumentation/agreement on the forum
 #define MSP_IDENT                100   //out message         multitype + multiwii version + protocol version + capability variable
-#define MSP_STATUS               101   //out message         cycletime & errors_count & sensor present & box activation
+#define MSP_STATUS               101   //out message         cycletime & errors_count & sensor present & box activation & current setting number
 #define MSP_RAW_IMU              102   //out message         9 DOF
 #define MSP_SERVO                103   //out message         8 servos
 #define MSP_MOTOR                104   //out message         8 motors
-#define MSP_RC                   105   //out message         8 rc chan
-#define MSP_RAW_GPS              106   //out message         fix, numsat, lat, lon, alt, speed
+#define MSP_RC                   105   //out message         8 rc chan and more
+#define MSP_RAW_GPS              106   //out message         fix, numsat, lat, lon, alt, speed, ground course
 #define MSP_COMP_GPS             107   //out message         distance home, direction home
 #define MSP_ATTITUDE             108   //out message         2 angles 1 heading
 #define MSP_ALTITUDE             109   //out message         altitude, variometer
-#define MSP_ANALOG               110   //out message         vbat, powermetersum
+#define MSP_ANALOG               110   //out message         vbat, powermetersum, rssi if available on RX
 #define MSP_RC_TUNING            111   //out message         rc rate, rc expo, rollpitch rate, yaw rate, dyn throttle PID
-#define MSP_PID                  112   //out message         up to 16 P I D (8 are used)
-#define MSP_BOX                  113   //out message         up to 16 checkbox (11 are used)
-#define MSP_MISC                 114   //out message         powermeter trig + 8 free for future use
+#define MSP_PID                  112   //out message         P I D coeff (9 are used currently)
+#define MSP_BOX                  113   //out message         BOX setup (number is dependant of your setup)
+#define MSP_MISC                 114   //out message         powermeter trig
 #define MSP_MOTOR_PINS           115   //out message         which pins are in use for motors & servos, for GUI 
 #define MSP_BOXNAMES             116   //out message         the aux switch names
 #define MSP_PIDNAMES             117   //out message         the PID names
 #define MSP_WP                   118   //out message         get a WP, WP# is in the payload, returns (WP#, lat, lon, alt, flags) WP#0-home, WP#16-poshold
 #define MSP_BOXIDS               119   //out message         get the permanent IDs associated to BOXes
 
-
 #define MSP_SET_RAW_RC           200   //in message          8 rc chan
 #define MSP_SET_RAW_GPS          201   //in message          fix, numsat, lat, lon, alt, speed
-#define MSP_SET_PID              202   //in message          up to 16 P I D (8 are used)
-#define MSP_SET_BOX              203   //in message          up to 16 checkbox (11 are used)
+#define MSP_SET_PID              202   //in message          P I D coeff (9 are used currently)
+#define MSP_SET_BOX              203   //in message          BOX setup (number is dependant of your setup)
 #define MSP_SET_RC_TUNING        204   //in message          rc rate, rc expo, rollpitch rate, yaw rate, dyn throttle PID
 #define MSP_ACC_CALIBRATION      205   //in message          no param
 #define MSP_MAG_CALIBRATION      206   //in message          no param
@@ -458,7 +457,7 @@ void evaluateCommand()
         headSerialReply(10);
         serialize32(EstAlt);
         serialize16(vario);                  // added since r1172
-        serialize32(AltHold);
+        serialize32(AltHold / 10);
         break;
     case MSP_ANALOG:
         headSerialReply(5);
@@ -518,63 +517,64 @@ void evaluateCommand()
             serialize8(PWM_PIN[i]);
         }
         break;
-#if defined(USE_MSP_WP)
-    case MSP_WP:
-    {
-        int32_t lat = 0, lon = 0;
-        uint8_t wp_no = read8();        //get the wp number
-        headSerialReply(12);
-        if (wp_no == 0)
-        {
-            lat = GPS_home[LAT];
-            lon = GPS_home[LON];
-        }
-        else if (wp_no == 16)
-        {
-            lat = GPS_hold[LAT];
-            lon = GPS_hold[LON];
-        }
-        serialize8(wp_no);
-        serialize32(lat);
-        serialize32(lon);
-        serialize32(AltHold);           //altitude (cm) will come here -- temporary implementation to test feature with apps
-        serialize16(0);                 //heading  will come here (deg)
-        serialize16(0);                 //time to stay (ms) will come here
-        serialize8(0);                  //nav flag will come here
-    }
-    break;
-    case MSP_SET_WP:
-    {
-        int32_t lat = 0, lon = 0, alt = 0;
-        uint8_t wp_no = read8();        //get the wp number
-        lat = read32();
-        lon = read32();
-        alt = read32();                 // to set altitude (cm)
-        read16();                       // future: to set heading (deg)
-        read16();                       // future: to set time to stay (ms)
-        read8();                        // future: to set nav flag
-        if (wp_no == 0)
-        {
-            GPS_home[LAT] = lat;
-            GPS_home[LON] = lon;
-            f.GPS_HOME_MODE = 0;          // with this flag, GPS_set_next_wp will be called in the next loop -- OK with SERIAL GPS / OK with I2C GPS
-            f.GPS_FIX_HOME  = 1;
-            if (alt != 0) AltHold = alt;  // temporary implementation to test feature with apps
-        }
-        else if (wp_no == 16)           // OK with SERIAL GPS  --  NOK for I2C GPS / needs more code dev in order to inject GPS coord inside I2C GPS
-        {
-            GPS_hold[LAT] = lat;
-            GPS_hold[LON] = lon;
-            if (alt != 0) AltHold = alt;  // temporary implementation to test feature with apps
-#if !defined(I2C_GPS)
-            nav_mode      = NAV_MODE_WP;
-            GPS_set_next_wp(&GPS_hold[LAT], &GPS_hold[LON]);
-#endif
-        }
-    }
-    headSerialReply(0);
-    break;
-#endif
+   #if defined(USE_MSP_WP)    
+   case MSP_WP:
+     {
+       int32_t lat = 0,lon = 0;
+       uint8_t wp_no = read8();        //get the wp number  
+       headSerialReply(18);
+       if (wp_no == 0) {
+         lat = WP[HOME].Lat;
+         lon = WP[HOME].Lon;
+       } else if (wp_no == 16) {
+         lat = WP[HOLD].Lat;
+         lon = WP[HOLD].Lon;
+       }
+       serialize8(wp_no);
+       serialize32(lat);
+       serialize32(lon);
+       serialize32(AltHold/10);        //altitude (cm) will come here -- temporary implementation to test feature with apps
+       serialize16(0);                 //heading  will come here (deg)
+       serialize16(0);                 //time to stay (ms) will come here 
+       serialize8(0);                  //nav flag will come here
+     }
+     break;
+   case MSP_SET_WP:
+     {
+       int32_t lat = 0,lon = 0,alt = 0;
+       uint8_t wp_no = read8();        //get the wp number
+       lat = read32();
+       lon = read32();
+       alt = read32();                 // to set altitude (cm)
+       read16();                       // future: to set heading (deg)
+       read16();                       // future: to set time to stay (ms)
+       read8();                        // future: to set nav flag
+       if (wp_no == 0) {
+         WP[HOME].Lat = lat;
+         WP[HOME].Lon = lon;
+         f.GPS_HOME_MODE = 0;          // with this flag, GPS_set_next_wp will be called in the next loop -- OK with SERIAL GPS / OK with I2C GPS
+         f.GPS_FIX_HOME  = 1;
+         if (alt != 0) 
+             WP[HOME].Alt = alt;           // temporary implementation to test feature with apps
+             WP[HOME].Vario = RTH_VARIO;   // vario can be inserted here instead of predefined
+             WP[HOME].Updated = 1;         // HOME WP is updated
+       } else if (wp_no == 16) {       // OK with SERIAL GPS  --  NOK for I2C GPS / needs more code dev in order to inject GPS coord inside I2C GPS
+         WP[HOLD].Lat = lat;
+         WP[HOLD].Lon = lon;
+         if (alt != 0) 
+             WP[HOLD].Alt   = alt;         // temporary implementation to test feature with apps
+             WP[HOLD].Vario = WP_VARIO;    // vario can be inserted here instead of predefined
+             WP[HOLD].Updated = 1;         // HOLD WP is updated
+         #if !defined(I2C_GPS)
+           nav_mode      = NAV_MODE_WP;
+           GPS_set_next_wp(&WP[HOLD].Lat,&WP[HOLD].Lon);
+         #endif
+       }
+     }
+     headSerialReply(0);
+     break;
+   #endif
+
     case MSP_RESET_CONF:
         if (!f.ARMED) LoadDefaults();
         headSerialReply(0);

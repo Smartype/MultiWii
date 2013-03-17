@@ -113,7 +113,6 @@ void computeIMU ()
 #define GYR_CMPFM_FACTOR 250
 
 //****** end of advanced users settings *************
-
 #define INV_GYR_CMPF_FACTOR   (1.0f / (GYR_CMPF_FACTOR  + 1.0f))
 #define INV_GYR_CMPFM_FACTOR  (1.0f / (GYR_CMPFM_FACTOR + 1.0f))
 
@@ -331,7 +330,6 @@ void getEstimatedAttitude()
     angle[ROLL]  = _atan2(EstG32.V.X , EstG32.V.Z);
     angle[PITCH] = _atan2(EstG32.V.Y , invmagXZ * sqGX_sqGZ);
 
-    cosZ =  EstG32.V.Z * invG * 100.0f; // cos(angleZ) * 100.
 
 #if MAG
     heading = _atan2(
@@ -339,6 +337,12 @@ void getEstimatedAttitude()
                   EstM32.V.Y * invG * sqGX_sqGZ  - (EstM32.V.X * EstG32.V.X + EstM32.V.Z * EstG32.V.Z) * invG * EstG32.V.Y );
     heading += MAG_DECLINIATION * 10; //add declination
     heading = heading / 10;
+#endif
+
+    cosZ =  EstG32.V.Z * invG * 100.0f; // cos(angleZ) * 100.
+
+#if defined(THROTTLE_ANGLE_CORRECTION)
+    throttleAngleCorrection = THROTTLE_ANGLE_CORRECTION * constrain(100 - cosZ, 0, 100) >> 3; // 16 bit ok: 200*150 = 30000
 #endif
 }
 
@@ -425,18 +429,15 @@ uint8_t getEstimatedAltitude()
     EstAlt = (EstAlt * 6 + BaroAlt * 2) >> 3; // additional LPF to reduce baro noise (faster by 30 µs)
 #endif
 
-#if (defined(VARIOMETER) && (VARIOMETER != 2)) || !defined(SUPPRESS_BARO_ALTHOLD)
+#if (defined(VARIOMETER) && (VARIOMETER != 2)) || !defined(SUPPRESS_BARO_ALTHOLD) || (defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE)))
+
     //P
-    int16_t error16 = constrain(AltHold - EstAlt, -400, 400); // Modify constrain limits during rising/descending
-
+    int16_t error16 = constrain((AltHold / 10) - EstAlt, -400, 400); // Modify constrain limits during rising/descending
     applyDeadband(error16, 10); //remove small P parametr to reduce noise near zero position
-
-    // Modify "P" and constrain limits during rising/descending
-    BaroPID = constrain(((Vario_Alt_PID_P * error16) >> 7), -Vario_Alt_PID_PLimit, Vario_Alt_PID_PLimit);  
+    BaroPID = constrain((conf.P8[PIDALT] * error16  >> 7), -200, 200);
 
     //I
-    // Modify "I" during rising/descending
-    errorAltitudeI += error16 * Vario_Alt_PID_I >> 6;
+    errorAltitudeI += conf.I8[PIDALT] * error16 >> 6;
     errorAltitudeI = constrain(errorAltitudeI, -30000, 30000);
     BaroPID += errorAltitudeI >> 9; //I in range +/-60
 
@@ -479,17 +480,17 @@ uint8_t getEstimatedAltitude()
 
     //D
     int16_t vel_tmp = vel;
-    if (BaroState != BARO_STATE_HOVERING)
-    {
-        // Modify vel_tmp with target velocity
-        vel_tmp -= ((AltVarioCorr * ALT_HOLD_VARIO_MAX) >> 5);
-    }
-
     applyDeadband(vel_tmp, 5);
     vario = vel_tmp;
-    BaroPID -= constrain(Vario_Alt_PID_D * vel_tmp >> 4, -150, 150);    // Modify "D" during rising/descending
+
+#if defined(VARIO_ALT_MODE) || defined(RTH_ALT_MODE) || defined(FAILSAFE_RTH_MODE) || defined(WP_ALT_MODE)
+    vel_tmp -= targetVario;
+#endif
+
+    BaroPID -= constrain(conf.D8[PIDALT] * vel_tmp >> 4, -150, 150);
 
 #endif
     return 1;
 }
 #endif //BARO
+
