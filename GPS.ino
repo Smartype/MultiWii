@@ -472,14 +472,14 @@ void GPS_NewData()
             i2c_write(I2C_GPS_EXT_STATUS);
             i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
             uint8_t var = i2c_readAck();
-            nav_modde = ((val & 0xC0) >> 6);
+            nav_mode = ((var & 0xC0) >> 6);
         }
 
     }
     else                                                                              //We don't have a fix zero out distance and bearing (for safety reasons)
     {
         nav_mode = NAV_MODE_NONE;
-        
+
         GPS_distanceToHome = 0;
         GPS_directionToHome = 0;
         GPS_numSat = 0;
