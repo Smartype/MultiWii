@@ -386,7 +386,7 @@ uint8_t getEstimatedAltitude()
     // see: https://code.google.com/p/ardupilot-mega/source/browse/libraries/AP_Baro/AP_Baro.cpp
     BaroAlt = log( baroGroundPressure * (BARO_TAB_SIZE - 1) / (float)baroPressureSum ) * (baroTemperature + 27315) * 29.271267f; // in cemtimeter
 
-#if SONAR || defined(I2C_SONAR)
+#if SONAR
     EstBaroAlt = (EstBaroAlt * 6 + BaroAlt * 2) >> 3; // additional LPF to reduce baro noise (faster by 30 µs)
     //debug[0] = EstBaroAlt;
 

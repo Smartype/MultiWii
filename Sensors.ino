@@ -2038,7 +2038,11 @@ void Sonar_update()
 }
 
 #elif defined(I2C_SONAR)
-void Sonar_update() {
+inline void Sonar_init() {
+
+}
+
+inline void Sonar_update() {
     
     uint32_t now = millis();
 
@@ -2073,9 +2077,13 @@ inline void Sonar_update() {}
 #endif
 #endif
 
+
+
+#ifdef OPTFLOW
+
 #if defined(I2C_OPTFLOW)
 
-void Optflow_set_paused(uint8_t paused) {
+inline void Optflow_set_paused(uint8_t paused) {
     // Read ext_status
     i2c_rep_start(I2C_GPS_ADDRESS << 1);
     i2c_write(I2C_GPS_EXT_STATUS);
@@ -2093,7 +2101,11 @@ void Optflow_set_paused(uint8_t paused) {
     }
 }
 
-void Optflow_update() {
+inline void Optflow_init() {
+
+}
+
+inline void Optflow_update() {
 
     // Update cosZ
     i2c_rep_start(I2C_GPS_ADDRESS << 1);
@@ -2101,11 +2113,7 @@ void Optflow_update() {
     i2c_write(cosZ);
 
     // When GPS fix is lost, GPSHOLD mode is disabled
-    if (
-        (!f.GPS_HOME_MODE) 
-        &&
-        (nav_mode == NAV_MODE_POSHOLD || rcOptions[BOXGPSHOLD])
-        ) 
+    if ((!f.GPS_HOME_MODE) && nav_mode != NAV_MODE_WP && f.ANGLE_MODE && f.OPTFLOW_MODE) 
     {    
         // send angle info
         uint8_t *varptr = (uint8_t *)&(angle[ROLL]);
@@ -2149,9 +2157,7 @@ void Optflow_update() {
     }
 
 }
-#endif
-
-#ifdef OPTFLOW
+#else
 
 static uint16_t scale; // scale factor for raw sensor data
 static int16_t sum_dx = 0, sum_dy = 0; // sensor's row data accumulators
@@ -2593,6 +2599,7 @@ void ADNS_write(byte address, byte data)
 }
 
 #endif
+#endif // else I2C_OPTFLOW
 
 void initSensors()
 {
@@ -2610,10 +2617,7 @@ void initSensors()
         acc_25deg = acc_1G * 0.423;
     }
     if (SONAR) Sonar_init();
-
-#if defined(OPTFLOW)
-    Optflow_init();
-#endif
+    if (OPTFLOW) Optflow_init();
 
     f.I2C_INIT_DONE = 1;
 }

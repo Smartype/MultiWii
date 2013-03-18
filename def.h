@@ -1477,12 +1477,17 @@ FlagType               Flag;
 #define GPS 0
 #endif
 
-#if defined(SRF02) || defined(SRF08) || defined(SRF10) || defined(SRC235) || defined(TINY_GPS_SONAR)
+#if defined(SRF02) || defined(SRF08) || defined(SRF10) || defined(SRC235) || defined(TINY_GPS_SONAR) || defined(I2C_SONAR)
 #define SONAR 1
 #else
 #define SONAR 0
 #endif
 
+#if !defined(OPTFLOW)
+#if defined(I2C_OPTFLOW)
+#define OPTFLOW 1
+#endif
+#endif
 
 /**************************************************************************************/
 /***************      Multitype decleration for the GUI's          ********************/
@@ -1788,11 +1793,9 @@ FlagType               Flag;
 * PCINT 8-15 = PCIE1 = pcmsk1 = PCINT1_vect
 */
 
-#if defined (PROMINI)
-#ifdef SONAR
-#undef SONAR
-#endif
+#if !defined(SONAR)
 
+#if defined (PROMINI)
 #if defined(HCSR04)
 #define SONAR                               1
 #define INVALID_SONAR_ALT                   9999
@@ -1837,6 +1840,7 @@ FlagType               Flag;
 #endif
 #endif
 
+#endif
 /**************************************************************************************/
 /********* enforce your sensors orientation - possibly overriding board defaults  *****/
 /**************************************************************************************/

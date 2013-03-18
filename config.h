@@ -586,15 +586,15 @@
    Please note that FAILSAFE_OFF_DELAY is still active for security reasons, so set up long time enough to be able to RTH before this timer ends because motors will stop!!!*/
 
 #define FAILSAFE_ALT_MODE             // uncomment for descending with constant vario if in Failsafe - use with FAILSAFE and define the FAILSAFE_SLOW_VARIO
-#define FAILSAFE_SLOW_VARIO   50      // in cm/s - slow desceding speed under SAFETY_ALT, this is default is SAFETY_ALT is not used.  - maximum 250!!!
+#define FAILSAFE_SLOW_VARIO   30      // in cm/s - slow desceding speed under SAFETY_ALT, this is default is SAFETY_ALT is not used.  - maximum 250!!!
 #define FAILSAFE_FAST_VARIO   100     // in cm/s - fast desceding speed over SAFETY_ALT, maximum 250!!!
 #define FAILSAFE_SAFETY_ALT   100     // in cm   - safety altitude, where to slow down descending before landing, in cm!!!
 
 #define FAILSAFE_RTH_MODE             // if GPS present and ready, copter starts RTH when signal lost. When signal is back, control is back again.
-#define FAILSAFE_RTH_VARIO    100     // in cm/s - vario for RTH function for failsafe, maximum 250!!!
-#define FAILSAFE_RTH_ALT      1000    // in cm   - minimum RTH altitude for failsafe. If copter is higher than this, it will keep altitude.
+#define FAILSAFE_RTH_VARIO    70     // in cm/s - vario for RTH function for failsafe, maximum 250!!!
+#define FAILSAFE_RTH_ALT      700    // in cm   - minimum RTH altitude for failsafe. If copter is higher than this, it will keep altitude.
 #define FAILSAFE_RTH_HOME     400     // in cm   - home altitude for RTH, copter will descend to this altitude and wait.
-#define FAILSAFE_RTH_DELAY    15      // in s    - safety delay, after reaching HOME altitude, it'll land in FAILSAFE_ALT_MODE when safety delay terminates.
+#define FAILSAFE_RTH_DELAY    10      // in s    - safety delay, after reaching HOME altitude, it'll land in FAILSAFE_ALT_MODE when safety delay terminates.
 
 
 
@@ -1160,6 +1160,7 @@
 /********************************************************************/
 //#define HCSR04
 #define I2C_SONAR
+
 //mixing values between sonar and baro
 #define SONAR_SONARFULL     (150+200) //full sonar reading before this point (cm)
 #define SONAR_BAROFULL      (300+200) //full baro reading after this point (cm)
@@ -1171,6 +1172,8 @@
 #define OF_DEBUG
 
 #define I2C_OPTFLOW   
+#define OPTFLOW 			1
+
 //#define OPTFLOW             ADNS_5050
 
 #define OF_YAW_DEADBAND 	40

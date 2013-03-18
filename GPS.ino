@@ -136,11 +136,11 @@ void reset_PID(struct PID_* pid)
 #define _Y 0
 
 #define RADX100                    0.000174532925
-#define CROSSTRACK_GAIN            1
+#define CROSSTRACK_GAIN            3
 #define NAV_SPEED_MIN              100    // cm/sec
-#define NAV_SPEED_MAX              300    // cm/sec
+#define NAV_SPEED_MAX              350    // cm/sec
 #define NAV_SLOW_NAV               true
-#define NAV_BANK_MAX 3000        //30deg max banking when navigating (just for security and testing)
+#define NAV_BANK_MAX 3500        //30deg max banking when navigating (just for security and testing)
 
 static float  dTnav;            // Delta Time in milliseconds for navigation computations, updated with every good GPS read
 static uint16_t GPS_wp_radius    = GPS_WP_RADIUS;
@@ -336,7 +336,6 @@ void GPS_NewData()
 
     GPS_numSat = (_i2c_gps_status & 0xf0) >> 4;
     _i2c_gps_status = i2c_readReg(I2C_GPS_ADDRESS, I2C_GPS_STATUS_00);                //Get status register
-    
     if (_i2c_gps_status & I2C_GPS_STATUS_3DFIX)                                       //Check is we have a good 3d fix (numsats>5)
     {
         f.GPS_FIX = 1;
@@ -352,7 +351,6 @@ void GPS_NewData()
         {
             GPS_reset_home_position();
         }
-
         if (_i2c_gps_status & I2C_GPS_STATUS_NEW_DATA)                                  //Check about new data
         {
             if (GPS_update)
@@ -460,6 +458,10 @@ void GPS_NewData()
                 }
                 else            //Home position reached
                 {
+                    nav_mode = NAV_MODE_POSHOLD;
+#if ((defined(RTH_ALT_MODE) || defined(WP_ALT_MODE)) && !defined(SUPPRESS_BARO_ALTHOLD)) || (defined(FAILSAFE) && (defined (FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE)))
+                    targetAltReached = 0;                     // reset parameter when switch mode
+#endif
                     if (NAV_SET_TAKEOFF_HEADING)
                     {
                         magHold = nav_takeoff_bearing;
@@ -467,14 +469,15 @@ void GPS_NewData()
                 }
             }
 
+            /*
             // Read ext_status
             i2c_rep_start(I2C_GPS_ADDRESS << 1);
             i2c_write(I2C_GPS_EXT_STATUS);
             i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
             uint8_t var = i2c_readAck();
             nav_mode = ((var & 0xC0) >> 6);
+            */
         }
-
     }
     else                                                                              //We don't have a fix zero out distance and bearing (for safety reasons)
     {
@@ -554,7 +557,7 @@ void GPS_NewData()
                 //calculate distance and bearings for gui and other stuff continously - From home to copter
                 uint32_t dist;
                 int32_t  dir;
-                GPS_distance_cm_bearing(&GPS_coord[LAT], &GPS_coord[LON], &GPS_home[LAT], &GPS_home[LON], &dist, &dir);
+                GPS_distance_cm_bearing(&GPS_coord[LAT], &GPS_coord[LON], &WP[HOME].Lat, &WP[HOME].Lon, &dist, &dir);
                 GPS_distanceToHome = dist / 100;
                 GPS_directionToHome = dir / 100;
 
@@ -605,9 +608,12 @@ void GPS_NewData()
                         if ((wp_distance <= GPS_wp_radius) || check_missed_wp())          //if yes switch to poshold mode
                         {
                             nav_mode = NAV_MODE_POSHOLD;
+#if ((defined(RTH_ALT_MODE) || defined(WP_ALT_MODE)) && !defined(SUPPRESS_BARO_ALTHOLD)) || (defined(FAILSAFE) && defined(FAILSAFE_RTH_MODE))
+                            targetAltReached = 0;                     // reset parameter when switch mode
+#endif
                             if (NAV_SET_TAKEOFF_HEADING)
                             {
-                                magHold = nav_takeoff_bearing;
+                                magHold = WP[HOME].Heading;
                             }
                         }
                         break;
@@ -627,11 +633,11 @@ void GPS_reset_home_position()
         //set current position as home
         GPS_I2C_command(I2C_GPS_COMMAND_SET_WP, 0); //WP0 is the home position
 #else
-        GPS_home[LAT] = GPS_coord[LAT];
-        GPS_home[LON] = GPS_coord[LON];
+        WP[HOME].Lat = GPS_coord[LAT];
+        WP[HOME].Lon = GPS_coord[LON];
         GPS_calc_longitude_scaling(GPS_coord[LAT]);  //need an initial value for distance and bearing calc
 #endif
-        nav_takeoff_bearing = heading;             //save takeoff heading
+        WP[HOME].Heading = heading;             //save takeoff heading
         //Set ground altitude
         f.GPS_FIX_HOME = 1;
     }
@@ -721,7 +727,6 @@ void GPS_set_pids()
     i2c_write(GPS_WP_RADIUS & 0x00FF); // lower eight bit
     i2c_write(GPS_WP_RADIUS >> 8); // upper eight bit
 #endif
-
 }
 
 #if defined (TINY_GPS)
