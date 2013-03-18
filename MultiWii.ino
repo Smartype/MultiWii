@@ -1770,6 +1770,7 @@ void loop()
                     GPSNavReset = 0;
 #if defined(I2C_GPS)
                     GPS_I2C_command(I2C_GPS_COMMAND_START_NAV, 0);       //waypoint zero
+                    nav_mode    = NAV_MODE_WP;                    
 #else // SERIAL
                     GPS_set_next_wp(&WP[HOME].Lat, &WP[HOME].Lon);
                     nav_mode    = NAV_MODE_WP;
@@ -1801,6 +1802,7 @@ void loop()
                         GPSNavReset = 0;
 #if defined(I2C_GPS)
                         GPS_I2C_command(I2C_GPS_COMMAND_POSHOLD, 0);
+                        nav_mode = NAV_MODE_POSHOLD;
 #else
                         WP[HOLD].Lat = GPS_coord[LAT];
                         WP[HOLD].Lon = GPS_coord[LON];
@@ -1860,6 +1862,7 @@ void loop()
                             GPSNavReset = 0;
 #if defined(I2C_GPS)
                             GPS_I2C_command(I2C_GPS_COMMAND_START_NAV, 0);       //waypoint zero
+                            nav_mode    = NAV_MODE_WP;
 #else // SERIAL
                             GPS_set_next_wp(&WP[HOME].Lat, &WP[HOME].Lon);
                             nav_mode    = NAV_MODE_WP;
@@ -1896,28 +1899,33 @@ void loop()
 
 
 #if defined(I2C_OPTFLOW)
-    if (!f.GPS_HOME_MODE) {
-        if (nav_mode == NAV_MODE_POSHOLD || rcOptions[BOXGPSHOLD]) {
-            if (abs(rcCommand[YAW]) > AP_MODE 
-            || abs(rcCommand[ROLL]) > AP_MODE 
-            || abs(rcCommand[PITCH]) > AP_MODE) 
+    if (
+        (!f.GPS_HOME_MODE) 
+        && 
+        // When I2C_Nav switched from reach a waypoint, POSHOLD automatically
+        (nav_mode == NAV_MODE_POSHOLD || rcOptions[BOXGPSHOLD])
+        )
+    {
+        if (abs(rcCommand[YAW]) > AP_MODE 
+        || abs(rcCommand[ROLL]) > AP_MODE 
+        || abs(rcCommand[PITCH]) > AP_MODE) 
+        {
+            if (!optflow_paused) 
             {
-                if (!optflow_paused) 
-                {
-                    optflow_paused = 1;
-                    Optflow_set_paused(optflow_paused);
-                }
+                optflow_paused = 1;
+                Optflow_set_paused(optflow_paused);
             }
-            else 
+        }
+        else 
+        {
+            if (optflow_paused) 
             {
-                if (optflow_paused) 
-                {
-                    optflow_paused = 0;
-                    Optflow_set_paused(optflow_paused);
-                }
-            }    
-        } 
-    }
+                optflow_paused = 0;
+                Optflow_set_paused(optflow_paused);
+            }
+        }    
+    } 
+
 #endif
 
 

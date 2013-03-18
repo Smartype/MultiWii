@@ -352,6 +352,7 @@ void GPS_NewData()
         {
             GPS_reset_home_position();
         }
+
         if (_i2c_gps_status & I2C_GPS_STATUS_NEW_DATA)                                  //Check about new data
         {
             if (GPS_update)
@@ -465,10 +466,20 @@ void GPS_NewData()
                     }
                 }
             }
+
+            // Read ext_status
+            i2c_rep_start(I2C_GPS_ADDRESS << 1);
+            i2c_write(I2C_GPS_EXT_STATUS);
+            i2c_rep_start((I2C_GPS_ADDRESS << 1) | 1);
+            uint8_t var = i2c_readAck();
+            nav_modde = ((val & 0xC0) >> 6);
         }
+
     }
     else                                                                              //We don't have a fix zero out distance and bearing (for safety reasons)
     {
+        nav_mode = NAV_MODE_NONE;
+        
         GPS_distanceToHome = 0;
         GPS_directionToHome = 0;
         GPS_numSat = 0;
