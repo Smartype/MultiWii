@@ -2038,11 +2038,8 @@ void Sonar_update()
 }
 
 #elif defined(I2C_SONAR)
-inline void Sonar_init() {
-
-}
-
-inline void Sonar_update() {
+inline void Sonar_init() {}
+void Sonar_update() {
     
     uint32_t now = millis();
 

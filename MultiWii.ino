@@ -375,7 +375,7 @@ static uint8_t telemetryStepIndex = 0;
 
 static int16_t failsafeEvents = 0;
 volatile int16_t failsafeCnt = 0;
-static int32_t failsafeAlt = 0;
+static int32_t failsafe_begin_alt = 0;
 static uint8_t failsafeLowBaroPIDs = 0;
 static uint8_t failsafeLowSonarAlt = 0;
 
@@ -613,10 +613,14 @@ static int16_t  targetVario = 0;
 #endif
 
 #if defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE))
+// failsafe descending started
 static uint8_t  failsafeAltSet = 0;
 #if defined(FAILSAFE_RTH_MODE)
+// started return to home
 static uint8_t  failsafeConfSet = 0;
+// hovering at home position
 static uint8_t  failsafeAtHome = 0;
+// hovered time
 static uint32_t failsafeAtHomeDelay = 0;
 #endif
 #endif
@@ -971,7 +975,7 @@ void setup()
 
     // set all WP datas to 0
 #if GPS
-    for (uint8_t i = 0; i <= 15; i++)
+    for (uint8_t i = 0; i < 16; i++)
     {
         WP[i].Lat     = 0;
         WP[i].Lon     = 0;
@@ -1187,8 +1191,7 @@ void altToFailsafe()
     case 0:
         // clear this to turn on optical flow sensor
         f.GPS_HOME_MODE = 0;
-        if (nav_mode == NAV_MODE_WP)
-            nav_mode = NAV_MODE_NONE;
+        if (nav_mode == NAV_MODE_WP) nav_mode = NAV_MODE_NONE;
 
         resetAltHold();
         failsafeAltSet = 1;
@@ -1374,9 +1377,16 @@ void loop()
                     tmp2 = tmp / 100;
                     rcCommand[THROTTLE] = lookupThrottleRC[tmp2] + (tmp - tmp2 * 100) * (lookupThrottleRC[tmp2 + 1] - lookupThrottleRC[tmp2]) / 100; // [0;1000] -> expo -> [conf.minthrottle;MAXTHROTTLE]
 
-                    failsafeAlt = EstAlt;
-                    
+                    failsafe_begin_alt = EstAlt;
+
                     failsafe_rcdata_throttle = rcData[THROTTLE];
+                    
+                    failsafeAltSet = 0;
+
+                    failsafeConfSet = 0;
+                    failsafeAtHomeDelay = 0;
+                    failsafeAtHome      = 0;
+
                 }
 
                 rcData[THROTTLE] = failsafe_rcdata_throttle;
@@ -1408,7 +1418,7 @@ void loop()
                      // timeout failsafe landing
                     || (failsafeCnt > 5 * (FAILSAFE_DELAY + FAILSAFE_OFF_DELAY) )
                     // something really bad happen, drops like a rock to avoid worse result
-                    || (failsafeAlt + FAILSAFE_RTH_ALT + 400 < EstAlt)     
+                    || (failsafe_begin_alt + FAILSAFE_RTH_ALT + 400 < EstAlt)     
                 )
                 {
                     //if we cannot reach target altitude , or landed
