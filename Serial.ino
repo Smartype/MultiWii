@@ -552,6 +552,23 @@ void evaluateCommand()
        if (wp_no == 0) {
          WP[HOME].Lat = lat;
          WP[HOME].Lon = lon;
+
+         #if defined(I2C_GPS)
+         i2c_rep_start(I2C_GPS_ADDRESS << 1);
+         i2c_write(I2C_GPS_WP0);
+         uint8_t* ptr = (uint8_t*)&(WP[HOME].Lat);
+         i2c_write(*ptr++);
+         i2c_write(*ptr++);
+         i2c_write(*ptr++);
+         i2c_write(*ptr);
+
+         ptr = (uint8_t*)&(WP[HOME].Lon);
+         i2c_write(*ptr++);
+         i2c_write(*ptr++);
+         i2c_write(*ptr++);
+         i2c_write(*ptr);
+         #endif
+
          f.GPS_HOME_MODE = 0;          // with this flag, GPS_set_next_wp will be called in the next loop -- OK with SERIAL GPS / OK with I2C GPS
          f.GPS_FIX_HOME  = 1;
          if (alt != 0) 
@@ -565,8 +582,25 @@ void evaluateCommand()
              WP[HOLD].Alt   = alt;         // temporary implementation to test feature with apps
              WP[HOLD].Vario = WP_VARIO;    // vario can be inserted here instead of predefined
              WP[HOLD].Updated = 1;         // HOLD WP is updated
-         #if !defined(I2C_GPS)
-           nav_mode      = NAV_MODE_WP;
+         #if defined(I2C_GPS)
+            i2c_rep_start(I2C_GPS_ADDRESS << 1);
+            i2c_write(I2C_GPS_WP1);  // Shall I use this waypoint?
+            uint8_t* ptr = (uint8_t*)&(WP[HOLD].Lat);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr);
+
+            ptr = (uint8_t*)&(WP[HOLD].Lon);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr);
+
+            GPS_I2C_command(I2C_GPS_COMMAND_START_NAV, 1);
+            nav_mode      = NAV_MODE_WP;
+         #else
+            nav_mode      = NAV_MODE_WP;
            GPS_set_next_wp(&WP[HOLD].Lat,&WP[HOLD].Lon);
          #endif
        }
