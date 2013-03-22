@@ -137,8 +137,8 @@ void reset_PID(struct PID_* pid)
 
 #define RADX100                    0.000174532925
 #define CROSSTRACK_GAIN            3
-#define NAV_SPEED_MIN              100    // cm/sec
-#define NAV_SPEED_MAX              350    // cm/sec
+#define NAV_SPEED_MIN              50    // cm/sec
+#define NAV_SPEED_MAX              300    // cm/sec
 #define NAV_SLOW_NAV               true
 #define NAV_BANK_MAX 3500        //30deg max banking when navigating (just for security and testing)
 

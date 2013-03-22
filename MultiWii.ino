@@ -1380,12 +1380,6 @@ void loop()
                     failsafe_begin_alt = EstAlt;
 
                     failsafe_rcdata_throttle = rcData[THROTTLE];
-                    
-                    failsafeAltSet = 0;
-
-                    failsafeConfSet = 0;
-                    failsafeAtHomeDelay = 0;
-                    failsafeAtHome      = 0;
 
                 }
 
@@ -1927,11 +1921,7 @@ void loop()
                         break;
                     }
                 }
-                else {
-                    // TODO: switch to optical flow only poshold and start to land?
-                    // TODO: set nav_mode to POSHOLD which cause auto landing
 
-                }
             }
         }
 #endif

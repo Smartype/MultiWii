@@ -567,8 +567,8 @@
    and motors is stopped. If RC pulse coming back before reached FAILSAFE_OFF_DELAY time, after the small quard time the RC control is returned to normal. */
 #define FAILSAFE                                        // uncomment  to activate the failsafe function
 #define FAILSAFE_DELAY          10                      // Guard time for failsafe activation after signal lost. 1 step = 0.1sec - 1sec in example
-#define FAILSAFE_OFF_DELAY      450                     // Time for Landing before motors stop in 0.1sec. 1 step = 0.1sec - 20sec in example
-#define FAILSAFE_THROTTLE       (MINTHROTTLE + 400)     // 1470 // (*) Throttle level used for landing - may be relative to MINTHROTTLE - as in this case
+#define FAILSAFE_OFF_DELAY      500                     // Time for Landing before motors stop in 0.1sec. 1 step = 0.1sec - 20sec in example
+#define FAILSAFE_THROTTLE       1500     				// (*) Throttle level used for landing - may be relative to MINTHROTTLE - as in this case
 /*****************                Failsafe descending to the ground by BARO          *********************************/
 #define FAILSAFE_VARIO          35                      // desceding speed, in cm/s      
 #define FAILSAFE_SONAR_ALT      5
@@ -727,7 +727,7 @@
    Convert the degree+minutes into decimal degree by ==> degree+minutes*(1/60)
    Note the sign on declination it could be negative or positive (WEST or EAST) */
 //#define MAG_DECLINIATION  3.96f              //For Budapest Hungary.
-#define MAG_DECLINIATION      -5.18f       // For Ningbo, Zhejiang, China -5 deg 11 min -> -5.183333333333333
+#define MAG_DECLINIATION      		(-5.18f)       // For Ningbo, Zhejiang, China -5 deg 11 min -> -5.183333333333333
 
 #define GPS_LEAD_FILTER                      // Adds a forward predictive filterig to compensate gps lag. Code based on Jason Short's lead filter implementation
 
@@ -950,12 +950,12 @@
 /* This feature calculates correction in throttle regarding to banking angle. Thanks to Alexmos!!!
  Please note that this feature is always active, NOT ONLY IN BARO MODE!!!
  For setup correctly, please follow this method:
-  - First set the value to 100 and try it in ANGLE mode
-  - Than raise the value 50 step by step, the goal is that when throttle is in hovering position and you start to move with the copter,
+  - First set the value to 10 and try it in ANGLE mode
+  - Than raise the value 5 step by step, the goal is that when throttle is in hovering position and you start to move with the copter,
     it should stay in the same altitude. Please note that since the props will act like a wing when copter has speed, maybe value should
-    reduced with 50-100. */
+    reduced with 5-10. */
 
-#define THROTTLE_ANGLE_CORRECTION   100
+#define THROTTLE_ANGLE_CORRECTION   40
 
 /********** Developer tunable parameters - PID correction for rising/descending ************/
 
