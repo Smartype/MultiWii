@@ -15,7 +15,7 @@ March  2013     V2.2
 
 
 #include <avr/pgmspace.h>
-#define  VERSION  220
+#define  VERSION  221
 
 /*********** RC alias *****************/
 enum rc
@@ -250,27 +250,74 @@ static uint16_t calibratingB = 0;  // baro calibration = get new ground pressure
 static uint16_t calibratingG;
 static uint16_t acc_1G;            // this is the 1G measured acceleration
 static uint16_t acc_25deg;
-static int16_t  gyroADC[3], accADC[3], accSmooth[3], magADC[3];
-static int16_t  heading, magHold, headFreeModeHold; // [-180;+180]
-static uint8_t  vbat;                   // battery voltage in 0.1V steps
 static uint8_t  vbatMin = VBATNOMINAL;  // lowest battery voltage in 0.1V steps
 static uint8_t  rcOptions[CHECKBOXITEMS];
-static int32_t  BaroAlt, EstAlt, AltHold; // in mm
+static int32_t  BaroAlt;           // in cm
 static int16_t  BaroPID = 0;
 static int16_t  errorAltitudeI = 0;
-static int16_t  vario = 0;              // variometer in cm/s
-static uint8_t  failsafeStatus = 0;   // Failsafe mode status - replace (failsafeCnt > (5*FAILSAFE_DELAY))
 static uint16_t failsafe_rcdata_throttle = 0;
-static int16_t  debug[4];
 static int16_t  AltVarioCorr = 0;
 static uint8_t  AltVarioChanged = 1;
 static int16_t  initialThrottleHold;  // placed here for separated baro-code
 
+// **************
+// gyro+acc IMU
+// **************
+static int16_t gyroZero[3] = {0, 0, 0};
+
+static struct
+{
+    int16_t  accSmooth[3];
+    int16_t  gyroData[3];
+    int16_t  magADC[3];
+    int16_t  gyroADC[3];
+    int16_t  accADC[3];
+} imu;
+
+static struct
+{
+    uint8_t  vbat;               // battery voltage in 0.1V steps
+    uint16_t intPowerMeterSum;
+    uint16_t rssi;               // range: [0;1023]
+} analog;
+
+static struct
+{
+    int32_t  EstAlt;             // in cm
+    int16_t  vario;              // variometer in cm/s
+    int32_t  AltHold;           // in mm
+} alt;
+
+static struct
+{
+    int16_t angle[2];
+    int16_t heading;
+    int16_t headFreeModeHold;
+    int16_t magHold; // [-180;+180]
+} att;
+
+static struct
+{
+    int16_t events;
+    uint8_t active;   // Failsafe mode status - replace (failsafeCnt > (5*FAILSAFE_DELAY))
+#if BARO && defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE))
+    uint8_t  altSet;
+#if defined(FAILSAFE_RTH_MODE)
+    uint8_t  confSet;
+    uint8_t  atHome;
+    uint32_t atHomeDelay;
+#if defined(FAILSAFE_RTH_START_DELAY)
+    uint32_t startDelay;
+#endif
+#endif
+#endif
+} failsafe;
 
 #if defined(ARMEDTIMEWARNING)
 static uint32_t  ArmedTimeWarningMicroSeconds = 0;
 #endif
 
+static int16_t  debug[4];
 
 struct flags_struct
 {
@@ -340,7 +387,7 @@ static uint8_t pMeterV;                  // dummy to satisfy the paramStruct log
 static uint32_t pAlarm;                  // we scale the eeprom value from [0:255] to this value we can directly compare to the sum in pMeter[6]
 static uint16_t powerValue = 0;          // last known current
 #endif
-static uint16_t intPowerMeterSum, intPowerTrigger1;
+static uint16_t intPowerTrigger1;
 
 // **********************
 // telemetry
@@ -373,7 +420,6 @@ static uint8_t telemetryStepIndex = 0;
 #define THR_CE  (3<<(2*THROTTLE))
 #define THR_HI  (2<<(2*THROTTLE))
 
-static int16_t failsafeEvents = 0;
 volatile int16_t failsafeCnt = 0;
 static int32_t failsafe_begin_alt = 0;
 static uint8_t failsafeLowBaroPIDs = 0;
@@ -387,7 +433,6 @@ static int16_t rcData[RC_CHANS];          // interval [1000;2000]
 static int16_t rcCommand[4];       // interval [1000;2000] for THROTTLE and [-500;+500] for ROLL/PITCH/YAW
 static int16_t lookupPitchRollRC[6];// lookup table for expo & RC rate PITCH+ROLL
 static int16_t lookupThrottleRC[11];// lookup table for expo & mid THROTTLE
-static uint16_t rssi;               // range: [0;1023]
 
 #if defined(SPEKTRUM)
 volatile uint8_t  spekFrameFlags;
@@ -398,21 +443,13 @@ volatile uint32_t spekTimeLast;
 static uint8_t pot_P, pot_I; // OpenLRS onboard potentiometers for P and I trim or other usages
 #endif
 
-// **************
-// gyro+acc IMU
-// **************
-static int16_t gyroData[3] = {0, 0, 0};
-static int16_t gyroZero[3] = {0, 0, 0};
-static int16_t angle[2]    = {0, 0}; // absolute angle inclination in multiple of 0.1 degree    180 deg = 1800
 
 // *************************
 // motor and servo functions
 // *************************
 static int16_t axisPID[3];
-static int16_t motor[NUMBER_MOTOR];
-#if defined(SERVO)
+static int16_t motor[8];
 static int16_t servo[8] = {1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500};
-#endif
 
 // ************************
 // EEPROM Layout definition
@@ -427,11 +464,17 @@ static struct
     uint8_t checksum;      // MUST BE ON LAST POSITION OF STRUCTURE !
 } global_conf;
 
+typedef struct pid_
+{
+    uint8_t P8;
+    uint8_t I8;
+    uint8_t D8;
+};
 
 static struct
 {
     uint8_t checkNewConf;
-    uint8_t P8[PIDITEMS], I8[PIDITEMS], D8[PIDITEMS];
+    pid_    pid[PIDITEMS];
     uint8_t rcRate8;
     uint8_t rcExpo8;
     uint8_t rollPitchRate;
@@ -507,18 +550,14 @@ static struct
 // **********************
 // GPS common variables
 // **********************
+static int16_t  GPS_angle[2] = { 0, 0};                      // the angles that must be applied for GPS correction
 static int32_t  GPS_coord[2];
-#if !defined(I2C_GPS)
-static int32_t  GPS_home[2];
-static int32_t  GPS_hold[2];
-#endif
 static uint8_t  GPS_numSat;
 static uint16_t GPS_distanceToHome;                          // distance to home  - unit: meter
 static int16_t  GPS_directionToHome;                         // direction to home - unit: degree
 static uint16_t GPS_altitude;                                // GPS altitude      - unit: meter
 static uint16_t GPS_speed;                                   // GPS speed         - unit: cm/s
 static uint8_t  GPS_update = 0;                              // a binary toogle to distinct a GPS position update
-static int16_t  GPS_angle[2] = { 0, 0};                      // the angles that must be applied for GPS correction
 static uint16_t GPS_ground_course = 0;                       //                   - unit: degree*10
 static uint8_t  GPS_Present = 0;                             // Checksum from Gps serial
 static uint8_t  GPS_Enable  = 0;
@@ -587,7 +626,7 @@ static uint8_t alarmArray[16];           // array
 // suggested naw flags:
 #define HOME 0
 #define HOLD 1
-// 2-16 - generic WP navigation  */
+// 2-WP_NUMBER - generic WP navigation  */
 
 static struct
 {
@@ -600,7 +639,7 @@ static struct
     uint8_t Updated;           // WP is updated or not or not?
     // 0 - current WP is not yet updated
     // 1 - current WP is already updated
-} WP[16];
+} WP[WP_NUMBER];
 
 #if BARO
 static int32_t baroPressure;
@@ -610,19 +649,6 @@ static int32_t baroPressureSum;
 #if !defined(SUPPRESS_BARO_ALTHOLD) || (defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE)))
 static uint8_t  isAltHoldChanged = 1;
 static int16_t  targetVario = 0;
-#endif
-
-#if defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE))
-// failsafe descending started
-static uint8_t  failsafeAltSet = 0;
-#if defined(FAILSAFE_RTH_MODE)
-// started return to home
-static uint8_t  failsafeConfSet = 0;
-// hovering at home position
-static uint8_t  failsafeAtHome = 0;
-// hovered time
-static uint32_t failsafeAtHomeDelay = 0;
-#endif
 #endif
 
 #if defined(AUTOLAND) && defined(RTH_ALT_MODE)
@@ -637,6 +663,16 @@ static uint8_t  targetAltReached;
     1 - Target Alt reached    */
 #endif
 
+#endif
+
+#if defined (SERVO_TILT_NHADRIAN)
+static struct
+{
+    int16_t dif[2];
+    int16_t prev[2];
+    int16_t velPrev[2];
+    int16_t acc[2];
+} camstab;
 #endif
 
 void annexCode()   // this code is excetuted at each loop and won't interfere with control loop if it lasts less than 650 microseconds
@@ -688,8 +724,8 @@ void annexCode()   // this code is excetuted at each loop and won't interfere wi
             rcCommand[axis] = tmp;
             prop1 = 100 - (uint16_t)conf.yawRate * tmp / 500;
         }
-        dynP8[axis] = (uint16_t)conf.P8[axis] * prop1 / 100;
-        dynD8[axis] = (uint16_t)conf.D8[axis] * prop1 / 100;
+        dynP8[axis] = (uint16_t)conf.pid[axis].P8 * prop1 / 100;
+        dynD8[axis] = (uint16_t)conf.pid[axis].D8 * prop1 / 100;
         if (rcData[axis] < MIDRC) rcCommand[axis] = -rcCommand[axis];
     }
     tmp = constrain(rcData[THROTTLE], MINCHECK, 2000);
@@ -699,7 +735,7 @@ void annexCode()   // this code is excetuted at each loop and won't interfere wi
 
     if (f.HEADFREE_MODE)  //to optimize
     {
-        float radDiff = (heading - headFreeModeHold) * 0.0174533f; // where PI/180 ~= 0.0174533
+        float radDiff = (att.heading - att.headFreeModeHold) * 0.0174533f; // where PI/180 ~= 0.0174533
         float cosDiff = cos(radDiff);
         float sinDiff = sin(radDiff);
         int16_t rcCommand_PITCH = rcCommand[PITCH] * cosDiff + rcCommand[ROLL] * sinDiff;
@@ -714,6 +750,7 @@ void annexCode()   // this code is excetuted at each loop and won't interfere wi
     {
         pMeterRaw =  analogRead(PSENSORPIN);
         //lcdprint_int16(pMeterRaw); LCDcrlf();
+        //debug[0] = pMeterRaw;
         powerValue = ( conf.psensornull > pMeterRaw ? conf.psensornull - pMeterRaw : pMeterRaw - conf.psensornull); // do not use abs(), it would induce implicit cast to uint and overrun
         if ( powerValue < 333)    // only accept reasonable values. 333 is empirical
         {
@@ -738,7 +775,7 @@ void annexCode()   // this code is excetuted at each loop and won't interfere wi
     {
         vbatRawArray[(ind++) % 8] = analogRead(V_BATPIN);
         for (uint8_t i = 0; i < 8; i++) vbatRaw += vbatRawArray[i];
-        vbat = (vbatRaw * 2) / conf.vbatscale; // result is Vbatt in 0.1V steps
+        analog.vbat = (vbatRaw * 2) / conf.vbatscale; // result is Vbatt in 0.1V steps
     }
 #endif
     alarmHandler(); // external buzzer routine that handles buzzer events globally now
@@ -750,7 +787,7 @@ void annexCode()   // this code is excetuted at each loop and won't interfere wi
     static uint16_t rssiRawArray[8];
     rssiRawArray[(sig++) % 8] = analogRead(RX_RSSI_PIN);
     for (uint8_t i = 0; i < 8; i++) rssiRaw += rssiRawArray[i];
-    rssi = rssiRaw / 8;
+    analog.rssi = rssiRaw / 8;
 #endif
 
     if ( (calibratingA > 0 && ACC ) || (calibratingG > 0) ) // Calibration phasis
@@ -809,7 +846,7 @@ void annexCode()   // this code is excetuted at each loop and won't interfere wi
 #endif
 
 #if defined(POWERMETER)
-    intPowerMeterSum = (pMeter[PMOTOR_SUM] / conf.pleveldiv);
+    analog.intPowerMeterSum = (pMeter[PMOTOR_SUM] / conf.pleveldiv);
     intPowerTrigger1 = conf.powerTrigger1 * PLEVELSCALE;
 #endif
 
@@ -877,7 +914,7 @@ void annexCode()   // this code is excetuted at each loop and won't interfere wi
         armedTime += (uint32_t)cycleTime;
 #endif
 #if defined(VBAT)
-        if ( (vbat > conf.no_vbat) && (vbat < vbatMin) ) vbatMin = vbat;
+        if ( (analog.vbat > conf.no_vbat) && (analog.vbat < vbatMin) ) vbatMin = analog.vbat;
 #endif
 #ifdef LCD_TELEMETRY
 #if BARO
@@ -946,6 +983,7 @@ void setup()
     for (uint8_t i = 0; i <= PMOTOR_SUM; i++)
         pMeter[i] = 0;
 #endif
+
     /************************************/
 #if defined(GPS_SERIAL)
     GPS_SerialInit();
@@ -971,20 +1009,6 @@ void setup()
 
 #if defined(I2C_GPS) || defined(TINY_GPS) || defined(GPS_FROM_OSD)
     GPS_Enable = 1;
-#endif
-
-    // set all WP datas to 0
-#if GPS
-    for (uint8_t i = 0; i < 16; i++)
-    {
-        WP[i].Lat     = 0;
-        WP[i].Lon     = 0;
-        WP[i].Alt     = 0;
-        WP[i].Heading = 0;
-        WP[i].Vario   = 0;
-        WP[i].Time    = 0;
-        WP[i].Updated = 0;
-    }
 #endif
 
 #if defined(RTH_ALT_MODE) || defined(FAILSAFE_RTH_MODE)   //set up the default values here
@@ -1031,7 +1055,7 @@ void resetAltHold()
 {
     errorAltitudeI = 0;         // clear all ALT_HOLD code values to default of OFF
     BaroPID = 0;
-    AltHold = EstAlt * 10;
+    alt.AltHold = alt.EstAlt * 10;
     targetVario = 0;
 #if (!defined(SUPPRESS_BARO_ALTHOLD) && (defined(VARIO_ALT_MODE) || defined(RTH_ALT_MODE) || defined(WP_ALT_MODE))) || (defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE)))
     targetAltReached = 0;
@@ -1046,7 +1070,7 @@ void altHoldCode()
         switch (AltHoldRising)
         {
         case 1:
-            AltHold += ((AltVarioCorr * ALT_VARIO_MAX * 10) / (300 - ALT_HOLD_THROTTLE_NEUTRAL_ZONE)) >> 5;
+            alt.AltHold += ((AltVarioCorr * ALT_VARIO_MAX * 10) / (300 - ALT_HOLD_THROTTLE_NEUTRAL_ZONE)) >> 5;
             targetVario = (int32_t)AltVarioCorr * ALT_VARIO_MAX >> 8;
             isAltHoldChanged = 1;
 #if defined(VARIO_MODE_CHANGE_BEEP) && defined(BUZZER)
@@ -1057,7 +1081,7 @@ void altHoldCode()
 #if defined(VARIO_MODE_CHANGE_BEEP) && defined(BUZZER)
             alarmArray[0] = 1;
 #endif
-            AltHold = EstAlt * 10;
+            alt.AltHold = alt.EstAlt * 10;
             errorAltitudeI = 0;
             BaroPID = 0;
             AltHoldRising = 1;
@@ -1069,7 +1093,7 @@ void altHoldCode()
         switch (AltHoldRising)
         {
         case 0:
-            AltHold += ((AltVarioCorr * ALT_VARIO_MAX * 10) / (300 - ALT_HOLD_THROTTLE_NEUTRAL_ZONE)) >> 5;
+            alt.AltHold += ((AltVarioCorr * ALT_VARIO_MAX * 10) / (300 - ALT_HOLD_THROTTLE_NEUTRAL_ZONE)) >> 5;
             targetVario = (int32_t)AltVarioCorr * ALT_VARIO_MAX >> 8;
             isAltHoldChanged = 1;
 #if defined(VARIO_MODE_CHANGE_BEEP) && defined(BUZZER)
@@ -1080,7 +1104,7 @@ void altHoldCode()
 #if defined(VARIO_MODE_CHANGE_BEEP) && defined(BUZZER)
             alarmArray[0] = 1;
 #endif
-            AltHold = EstAlt * 10;
+            alt.AltHold = alt.EstAlt * 10;
             errorAltitudeI = 0;
             BaroPID = 0;
             AltHoldRising = 0;
@@ -1111,13 +1135,13 @@ void altToTarget(uint16_t target, uint8_t vario, uint8_t mode)
 
     if (!targetAltReached)        // rising/descending to RTH_ALT during navigating to home
     {
-        if (EstAlt > (target + 30))
+        if (alt.EstAlt > (target + 30))
         {
 #if defined(RTH_ALT_MODE) && !defined(SUPPRESS_BARO_ALTHOLD)
             if (mode == 2)               // if we are in RTH mode
             {
 #if !defined(RTH_KEEP_ALT)
-                AltHold -= (vario * 5) >> 4;
+                alt.AltHold -= (vario * 5) >> 4;
                 targetVario = -vario;
 #endif
             }
@@ -1127,13 +1151,13 @@ void altToTarget(uint16_t target, uint8_t vario, uint8_t mode)
                 if (mode != 0)              // not in failsafe RTH mode
 #endif
                 {
-                    AltHold -= (vario * 5) >> 4;
+                    alt.AltHold -= (vario * 5) >> 4;
                     targetVario = -vario;
                 }
         }
-        else if (EstAlt < (target - 30))
+        else if (alt.EstAlt < (target - 30))
         {
-            AltHold += (vario * 5) >> 4;
+            alt.AltHold += (vario * 5) >> 4;
             targetVario = vario;
         }
         else
@@ -1141,14 +1165,14 @@ void altToTarget(uint16_t target, uint8_t vario, uint8_t mode)
 #if defined(WP_ALT_MODE)
             if (f.GPS_HOLD_MODE) WP[HOLD].Updated = 0;  //reached the target altitude
 #endif
-            AltHold = target * 10;
+            alt.AltHold = target * 10;
             errorAltitudeI = 0;
             targetVario = 0;
             targetAltReached = 1;
 #if defined(FAILSAFE) && defined(FAILSAFE_RTH_MODE)
             if (mode == 1)
             {
-                failsafeAtHome = 1;   //when reach FAILSAFE_HOME_ALT during FAILSAFE_RTH_MODE
+                failsafe.atHome = 1;   //when reach FAILSAFE_HOME_ALT during FAILSAFE_RTH_MODE
             }
 #endif
         }
@@ -1167,14 +1191,14 @@ void altToAutoland()
         autolandAltSet = 1;
         break;
     case 1:
-        if (EstAlt > AUTOLAND_SAFETY_ALT)
+        if (alt.EstAlt > AUTOLAND_SAFETY_ALT)
         {
-            AltHold -= (AUTOLAND_FAST_VARIO * 5) >> 4;
+            alt.AltHold -= (AUTOLAND_FAST_VARIO * 5) >> 4;
             targetVario = -AUTOLAND_FAST_VARIO;
         }
         else
         {
-            AltHold -= (AUTOLAND_SLOW_VARIO * 5) >> 4;
+            alt.AltHold -= (AUTOLAND_SLOW_VARIO * 5) >> 4;
             targetVario = -AUTOLAND_SLOW_VARIO;
         }
         AltVarioChanged = 1;
@@ -1186,30 +1210,30 @@ void altToAutoland()
 #if defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE))
 void altToFailsafe()
 {
-    switch (failsafeAltSet)
+    switch (failsafe.altSet)
     {
     case 0:
-        // clear this to turn on optical flow sensor
+        // clear these to allow turnning on optical flow sensor
         f.GPS_HOME_MODE = 0;
         if (nav_mode == NAV_MODE_WP) nav_mode = NAV_MODE_NONE;
 
         resetAltHold();
-        failsafeAltSet = 1;
+        failsafe.altSet = 1;
         break;
     case 1:
 #if defined(FAILSAFE_FAST_VARIO)
-        if (EstAlt > FAILSAFE_SAFETY_ALT)
+        if (alt.EstAlt > FAILSAFE_SAFETY_ALT)
         {
-            AltHold -= (FAILSAFE_FAST_VARIO * 5) >> 4;
+            alt.AltHold -= (FAILSAFE_FAST_VARIO * 5) >> 4;
             targetVario = -FAILSAFE_FAST_VARIO;
         }
         else
         {
-            AltHold -= (FAILSAFE_SLOW_VARIO * 5) >> 4;
+            alt.AltHold -= (FAILSAFE_SLOW_VARIO * 5) >> 4;
             targetVario = -FAILSAFE_SLOW_VARIO;
         }
 #else
-        AltHold -= (FAILSAFE_SLOW_VARIO * 5) >> 4;
+        alt.AltHold -= (FAILSAFE_SLOW_VARIO * 5) >> 4;
         targetVario = -FAILSAFE_SLOW_VARIO;
 #endif
         AltVarioChanged = 1;
@@ -1234,9 +1258,9 @@ void go_arm()
         if (!f.ARMED)  // arm now!
         {
             f.ARMED = 1;
-            headFreeModeHold = heading;
+            att.headFreeModeHold = att.heading;
 #if defined(VBAT)
-            if (vbat > conf.no_vbat) vbatMin = vbat;
+            if (analog.vbat > conf.no_vbat) vbatMin = analog.vbat;
 #endif
 #ifdef LCD_TELEMETRY // reset some values when arming
 #if BARO
@@ -1252,9 +1276,9 @@ void go_arm()
 #if BARO
             calibratingB = 10; // calibrate baro to new ground level when armed
 #if (defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE)))
-            failsafeAltSet = 0;   // reset to avoid problems when rearmed
+            failsafe.altSet = 0;   // reset to avoid problems when rearmed
 #if defined(FAILSAFE_RTH_MODE)
-            failsafeConfSet = 0;  // reset to avoid problems when rearmed
+            failsafe.confSet = 0;  // reset to avoid problems when rearmed
 #endif
 #endif
 #endif
@@ -1274,7 +1298,7 @@ void go_disarm()
 #ifdef LOG_PERMANENT
         plog.disarm++;        // #disarm events
         plog.armed_time = armedTime ;   // lifetime in seconds
-        if (failsafeEvents) plog.failsafe++;      // #acitve failsafe @ disarm
+        if (failsafe.events) plog.failsafe++;      // #acitve failsafe @ disarm
         if (i2c_errors_count > 10) plog.i2c++;           // #i2c errs @ disarm
         plog.running = 0;       // toggle @ arm & disarm to monitor for clean shutdown vs. powercut
         // write now.
@@ -1305,7 +1329,7 @@ void servos2Neutral()
 }
 
 // ******** Main Loop *********
-void loop()
+void loop ()
 {
     static uint8_t rcDelayCommand; // this indicates the number of time (multiple of RC measurement at 50Hz) the sticks must be maintained to run or switch off motors
     static uint8_t rcSticks;       // this hold sticks position for command combos
@@ -1335,19 +1359,47 @@ void loop()
         rcTime = currentTime + 20000;
         computeRC();
 
-#if defined(FAILSAFE)
+#if defined(SERVO_TILT_NHADRIAN)
+        if (rcOptions[BOXCAMSTAB])
+        {
+            if (abs(att.angle[ROLL] - camstab.prev[ROLL]) > TILT_ROLL_D)    // CAM STABILIZATION angular velocity calculation
+            {
+                camstab.dif[ROLL] = (att.angle[ROLL] - camstab.prev[ROLL]);
+            }
+            else
+            {
+                camstab.dif[ROLL] = 0;
+            }
+            if (abs(att.angle[PITCH] - camstab.prev[PITCH]) > TILT_PITCH_D)
+            {
+                camstab.dif[PITCH] = (att.angle[PITCH] - camstab.prev[PITCH]);
+            }
+            else
+            {
+                camstab.dif[PITCH] = 0;
+            }
 
+            for (uint8_t i = 0; i < 2; i++)
+            {
+                camstab.acc[i] = camstab.dif[i] - camstab.velPrev[i];
+                camstab.velPrev[i] = camstab.dif[i];
+                camstab.prev[i] = att.angle[i];
+            }
+        }
+#endif
+
+#if defined(FAILSAFE)
         if (failsafeCnt > (5 * FAILSAFE_DELAY))
         {
-            failsafeStatus = 1;
+            failsafe.active = 1;
         }
         else
         {
-            failsafeStatus = 0;
+            failsafe.active = 0;
             failsafe_rcdata_throttle = 0;
         }
 
-        if (failsafeStatus && f.ARMED)                  // Stabilize, and set Throttle to specified level
+        if (failsafe.active && f.ARMED)                  // Stabilize, and set Throttle to specified level
         {
             if (rcData[THROTTLE] < MINCHECK)
             {
@@ -1377,7 +1429,7 @@ void loop()
                     tmp2 = tmp / 100;
                     rcCommand[THROTTLE] = lookupThrottleRC[tmp2] + (tmp - tmp2 * 100) * (lookupThrottleRC[tmp2 + 1] - lookupThrottleRC[tmp2]) / 100; // [0;1000] -> expo -> [conf.minthrottle;MAXTHROTTLE]
 
-                    failsafe_begin_alt = EstAlt;
+                    failsafe_begin_alt = alt.EstAlt;
 
                     failsafe_rcdata_throttle = rcData[THROTTLE];
 
@@ -1412,7 +1464,7 @@ void loop()
                      // timeout failsafe landing
                     || (failsafeCnt > 5 * (FAILSAFE_DELAY + FAILSAFE_OFF_DELAY) )
                     // something really bad happen, drops like a rock to avoid worse result
-                    || (failsafe_begin_alt + FAILSAFE_RTH_ALT + 400 < EstAlt)     
+                    || (failsafe_begin_alt + FAILSAFE_RTH_ALT + 400 < alt.EstAlt)     
                 )
                 {
                     //if we cannot reach target altitude , or landed
@@ -1423,33 +1475,35 @@ void loop()
                 }
             }
 
-            failsafeEvents++;
+            failsafe.events++;
         }
 #if (defined(FAILSAFE_RTH_MODE) || defined(FAILSAFE_ALT_MODE)) && BARO
-        else if (failsafeAltSet
+        else if (failsafe.altSet
 #if defined(FAILSAFE_RTH_MODE)
-                 || failsafeConfSet
+                 || failsafe.confSet
 #endif //defined(FAILSAFE_RTH_MODE)
                 )
         {
-            failsafeAltSet = 0;
+            failsafe.altSet = 0;
 #if defined(FAILSAFE_RTH_MODE)
-            failsafeConfSet = 0;
-            failsafeAtHomeDelay = 0;
-            failsafeAtHome      = 0;
+            failsafe.confSet = 0;
+            failsafe.atHomeDelay = 0;
+#if defined(FAILSAFE_RTH_START_DELAY)
+            failsafe.startDelay = 0;
+#endif
+            failsafe.atHome      = 0;
 #endif //defined(FAILSAFE_RTH_MODE)
             resetAltHold();
             failsafe_rcdata_throttle  = 0;
         }
 #endif //(defined(FAILSAFE_RTH_MODE) || defined(FAILSAFE_ALT_MODE)) && BARO
 
-        if (failsafeStatus && !f.ARMED)  //Turn off "Ok To arm to prevent the motors from spinning after repowering the RX with low throttle and aux to arm
+        if (failsafe.active && !f.ARMED)  //Turn off "Ok To arm to prevent the motors from spinning after repowering the RX with low throttle and aux to arm
         {
             go_disarm();     // This will prevent the copter to automatically rearm if failsafe shuts it down and prevents
             f.OK_TO_ARM = 0; // to restart accidentely by just reconnect to the tx - you will have to switch off first to rearm
             failsafe_rcdata_throttle  = 0;            
         }
-
         failsafeCnt++;
 #endif
         // end of failsafe routine - next change is made with RcOptions setting
@@ -1480,7 +1534,6 @@ void loop()
                 if ( rcOptions[BOXARM] && f.OK_TO_ARM ) go_arm(); else if (f.ARMED) go_disarm();
             }
         }
-
         if (rcDelayCommand == 20)
         {
             if (f.ARMED)                    // actions during armed
@@ -1615,7 +1668,7 @@ void loop()
 
         // note: if FAILSAFE is disable, failsafeCnt > 5*FAILSAFE_DELAY is always false
 #if ACC
-        if (rcOptions[BOXANGLE] || failsafeStatus)
+        if (rcOptions[BOXANGLE] || failsafe.active)
         {
             // bumpless transfer to Level mode
             if (!f.ANGLE_MODE)
@@ -1629,8 +1682,7 @@ void loop()
             // failsafe support
             f.ANGLE_MODE = 0;
         }
-
-        if ( rcOptions[BOXHORIZON] && !failsafeStatus)
+        if ( rcOptions[BOXHORIZON] && !failsafe.active)
         {
             f.ANGLE_MODE = 0;
             if (!f.HORIZON_MODE)
@@ -1646,7 +1698,7 @@ void loop()
 #endif
 
 #if OPTFLOW
-        if ((failsafeAltSet || rcOptions[BOXOPTFLOW]) && f.ANGLE_MODE) 
+        if ((failsafe.altSet || rcOptions[BOXOPTFLOW]) && f.ANGLE_MODE) 
         {
             f.OPTFLOW_MODE = 1;
 
@@ -1689,7 +1741,7 @@ void loop()
 #if (!defined(SUPPRESS_BARO_ALTHOLD))
         if (rcOptions[BOXBARO]
 #if defined(FAILSAFE) && (defined(FAILSAFE_RTH_MODE) || defined(FAILSAFE_ALT_MODE))
-                && !failsafeStatus             //to avoid altitude calculations and resetAltHold during FAILSAFE
+                && !failsafe.active             //to avoid altitude calculations and resetAltHold during FAILSAFE
 #endif
 #if defined(AUTOLAND) && defined(RTH_ALT_MODE)
                 || (rcOptions[BOXAUTOLAND] && (f.GPS_FIX && GPS_numSat >= 5 ))
@@ -1731,12 +1783,12 @@ void loop()
 #endif // VARIO
 #endif // BARO
 #if MAG
-        if (rcOptions[BOXMAG] || failsafeStatus)        //allow MAG mode when in failsafe
+        if (rcOptions[BOXMAG] || failsafe.active)        //allow MAG mode when in failsafe
         {
             if (!f.MAG_MODE)
             {
                 f.MAG_MODE = 1;
-                magHold = heading;
+                att.magHold = att.heading;
             }
         }
         else
@@ -1758,11 +1810,11 @@ void loop()
             {
                 if (GPS_directionToHome < 180)
                 {
-                    headFreeModeHold = GPS_directionToHome + 180;
+                    att.headFreeModeHold = GPS_directionToHome + 180;
                 }
                 else
                 {
-                    headFreeModeHold = GPS_directionToHome - 180;
+                    att.headFreeModeHold = GPS_directionToHome - 180;
                 }
             }
 #endif
@@ -1781,7 +1833,7 @@ void loop()
 #endif
            )
         {
-            headFreeModeHold = heading; // acquire new heading
+            att.headFreeModeHold = att.heading; // acquire new heading
         }
 #endif
 
@@ -1833,7 +1885,7 @@ void loop()
                 {
                     if (!f.GPS_HOLD_MODE
 #if defined(FAILSAFE) && defined(FAILSAFE_RTH_MODE)
-                            && !failsafeStatus             //to avoid nav_mode switch to NAP_MODE_POSHOLD when in failsafe
+                            && !failsafe.active             //to avoid nav_mode switch to NAP_MODE_POSHOLD when in failsafe
 #endif
                        )
                     {
@@ -1856,7 +1908,7 @@ void loop()
                     // both boxes are unselected here, nav is reset if not already done
                     if (GPSNavReset == 0
 #if defined(FAILSAFE) && defined(FAILSAFE_RTH_MODE)
-                            && !failsafeStatus             //to avoid navreset when in failsafe
+                            && !failsafe.active             //to avoid navreset when in failsafe
 #endif
                        )
                     {
@@ -1877,20 +1929,60 @@ void loop()
 #if !defined(I2C_GPS)
             nav_mode = NAV_MODE_NONE;
 #endif
+
         }
 #endif
 
+/*
+    When FAILSAFE_RTH_START_DELAY defined: 0 -> 2 -> 3 -> 1
+    Else: 0 -> 1
+*/
 #if defined(FAILSAFE) && defined(FAILSAFE_RTH_MODE) && BARO     // set the proper f.modes for RTH function
-        if (failsafeStatus)                              // after specified guard time after RC signal is lost (in 0.1sec)
+        if (failsafe.active)                              // after specified guard time after RC signal is lost (in 0.1sec)
         {
             if (f.ARMED)
             {
                 if (f.GPS_FIX && GPS_numSat >= 5)                                //check if GPS is ready for RTH
                 {
-                    switch (failsafeConfSet)                                        //first save the states and prepare to give control to RTH!
+                    switch (failsafe.confSet)                                        //first save the states and prepare to give control to RTH!
                     {
+// poshold
+#if defined(FAILSAFE_RTH_START_DELAY)
                     case 0:
-                        failsafeConfSet = 1;
+                        failsafe.confSet = 2;
+                        if (f.GPS_HOME_MODE || !f.GPS_HOLD_MODE)                                      //check if already in RTH or HOLD?
+                        {
+                            f.GPS_HOME_MODE = 0;
+                            f.GPS_HOLD_MODE = 1;
+#if defined(AUTOLAND) && defined(RTH_ALT_MODE)
+                            f.AUTOLAND_MODE = 0;
+#endif
+                            GPSNavReset = 0;
+#if defined(I2C_GPS)
+                            GPS_I2C_command(I2C_GPS_COMMAND_POSHOLD, 0);       //waypoint zero
+                            nav_mode = NAV_MODE_POSHOLD;
+#else // SERIAL
+                            WP[HOLD].Lat = GPS_coord[LAT];
+                            WP[HOLD].Lon = GPS_coord[LON];
+                            GPS_set_next_wp(&WP[HOLD].Lat, &WP[HOLD].Lon);
+                            nav_mode = NAV_MODE_POSHOLD;
+#endif
+                        }
+
+#if defined(FAILSAFE_RTH_DELAY)
+                        failsafe.atHome = 0;
+#endif
+                        resetAltHold();           //to be sure that parameters are set to default even if already was in BARO_MODE
+                        break;
+#endif // defined(FAILSAFE_RTH_START_DELAY)
+
+// go to home
+#if defined(FAILSAFE_RTH_START_DELAY)
+                    case 3: 
+#else
+                    case 0:
+#endif // defined(FAILSAFE_RTH_START_DELAY)
+                        failsafe.confSet = 1;
                         if (!f.GPS_HOME_MODE || f.GPS_HOLD_MODE)                                      //check if already in RTH or HOLD?
                         {
                             f.GPS_HOME_MODE = 1;
@@ -1907,11 +1999,13 @@ void loop()
                             nav_mode    = NAV_MODE_WP;
 #endif
                         }
+
 #if defined(FAILSAFE_RTH_DELAY)
-                        failsafeAtHome = 0;
+                        failsafe.atHome = 0;
 #endif
                         resetAltHold();           //to be sure that parameters are set to default even if already was in BARO_MODE
                         break;
+
                     case 1:
                         f.GPS_HOME_MODE   = 1;
                         f.GPS_HOLD_MODE   = 0;
@@ -1919,9 +2013,26 @@ void loop()
                         f.AUTOLAND_MODE = 0;
 #endif
                         break;
+
+#if defined(FAILSAFE_RTH_START_DELAY)
+                    case 2:
+                        f.GPS_HOME_MODE   = 0;
+                        f.GPS_HOLD_MODE   = 1;
+#if defined(AUTOLAND) && defined(RTH_ALT_MODE)
+                        f.AUTOLAND_MODE = 0;
+#endif
+                        /*
+                            1. this will not be executed when no gps fix
+                            2. removed to save power
+                        */
+                        /*
+                        if (failsafe.startDelay > FAILSAFE_RTH_START_DELAY * 1000000)
+                            failsafe.confSet = 3;
+                        */
+                        break;
+#endif // defined(FAILSAFE_RTH_START_DELAY)
                     }
                 }
-
             }
         }
 #endif
@@ -1987,7 +2098,6 @@ void loop()
             f.ACC_INFLIGHT_CALI_SAVE = 1;
         }
 #endif
-
 
     }
     else     // not in rc loop
@@ -2085,19 +2195,24 @@ void loop()
 #if MAG
     if (abs(rcCommand[YAW]) < 70 && f.MAG_MODE)
     {
-        int16_t dif = heading - magHold;
+        int16_t dif = att.heading - att.magHold;
         if (dif <= - 180) dif += 360;
         if (dif >= + 180) dif -= 360;
-        if ( f.SMALL_ANGLES_25 ) rcCommand[YAW] -= dif * conf.P8[PIDMAG] / 30;
+        if ( f.SMALL_ANGLES_25 ) rcCommand[YAW] -= dif * conf.pid[PIDMAG].P8 >> 5;
     }
-    else magHold = heading;
+    else att.magHold = att.heading;
 #endif
 
 #if defined(FAILSAFE_RTH_MODE) && defined(FAILSAFE) && defined(FAILSAFE_RTH_DELAY)
-    if (failsafeAtHome)
+    if (failsafe.atHome)
     {
-        failsafeAtHomeDelay += cycleTime;
+        failsafe.atHomeDelay += cycleTime;
     }
+#if defined(FAILSAFE_RTH_START_DELAY)
+    if (failsafe.confSet == 2) {
+        failsafe.startDelay += cycleTime;
+    }
+#endif
 #endif
 
 #if BARO && (!defined(SUPPRESS_BARO_ALTHOLD) || (defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE))))
@@ -2123,7 +2238,7 @@ void loop()
 #if !defined(SUPPRESS_BARO_ALTHOLD)
     if (f.BARO_MODE
 #if defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE))
-            && !failsafeStatus                          // check if not in Failsafe
+            && !failsafe.active                          // check if not in Failsafe
 #endif
        )
     {
@@ -2181,7 +2296,7 @@ void loop()
                     altHoldCode();
                 }
             }
-            if ((EstAlt < (AUTOLAND_SAFETY_ALT - 100)) && (BaroPID < -300))
+            if ((alt.EstAlt < (AUTOLAND_SAFETY_ALT - 100)) && (BaroPID < -300))
             {
                 go_disarm();   // disarm when copter is on the ground - the minimum of BaroPID is 250 so 240 is OK here
             }
@@ -2225,7 +2340,7 @@ void loop()
             {
                 if (isAltHoldChanged)
                 {
-                    AltHold = EstAlt * 10;
+                    alt.AltHold = alt.EstAlt * 10;
                     isAltHoldChanged = 0;
                 }
                 rcCommand[THROTTLE] = initialThrottleHold + BaroPID;
@@ -2252,7 +2367,7 @@ void loop()
         {
             if (isAltHoldChanged)
             {
-                AltHold = EstAlt * 10;
+                alt.AltHold = alt.EstAlt * 10;
                 isAltHoldChanged = 0;
             }
             rcCommand[THROTTLE] = initialThrottleHold + BaroPID;
@@ -2262,14 +2377,14 @@ void loop()
 #endif
 
 #if defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE))             //failsafe altitude handling codes 
-    if (failsafeStatus)
+    if (failsafe.active)
     {
         if (!AltVarioChanged)               //Allcalculations runs on 25 Hz
         {
 #if defined(FAILSAFE_RTH_MODE)
             if (f.GPS_HOME_MODE
 #if defined(FAILSAFE_RTH_DELAY)
-                    && (failsafeAtHomeDelay < (FAILSAFE_RTH_DELAY * 1000000))           //check if hovering at home position for less time than FAILSAFE_RTH_DELAY - if more, will land in failsafe alt mode
+                    && (failsafe.atHomeDelay < (FAILSAFE_RTH_DELAY * 1000000))           //check if hovering at home position for less time than FAILSAFE_RTH_DELAY - if more, will land in failsafe alt mode
 #endif
                )          //check if GPS is ready for RTH
             {
@@ -2285,7 +2400,19 @@ void loop()
             }
             else
             {
+                #if defined(FAILSAFE_RTH_START_DELAY)
+                if (failsafe.confSet == 2) 
+                {
+                    altHoldCode();
+
+                    if (failsafe.startDelay > FAILSAFE_RTH_START_DELAY * 1000000) 
+                        failsafe.confSet = 3;
+                }
+                else 
+                    altToFailsafe();
+                #else // defined(FAILSAFE_RTH_START_DELAY)
                 altToFailsafe();
+                #endif // defined(FAILSAFE_RTH_START_DELAY)
             }
 #else
             altToFailsafe();
@@ -2298,8 +2425,8 @@ void loop()
 #endif
 #endif
 
-#if THROTTLE_ANGLE_CORRECTION > 0
-    if ((f.ANGLE_MODE || f.HORIZON_MODE) && cosZ > 0)
+#if defined(THROTTLE_ANGLE_CORRECTION)
+    if (f.ANGLE_MODE || f.HORIZON_MODE)
     {
         rcCommand[THROTTLE] += throttleAngleCorrection;
     }
@@ -2308,8 +2435,8 @@ void loop()
 #if GPS
     if ( (f.GPS_HOME_MODE || f.GPS_HOLD_MODE) && f.GPS_FIX_HOME )
     {
-        float sin_yaw_y = sin(heading * 0.0174532925f);
-        float cos_yaw_x = cos(heading * 0.0174532925f);
+        float sin_yaw_y = sin(att.heading * 0.0174532925f);
+        float cos_yaw_x = cos(att.heading * 0.0174532925f);
 #if defined(NAV_SLEW_RATE)
         nav_rated[LON]   += constrain(wrap_18000(nav[LON] - nav_rated[LON]), -NAV_SLEW_RATE, NAV_SLEW_RATE);
         nav_rated[LAT]   += constrain(wrap_18000(nav[LAT] - nav_rated[LAT]), -NAV_SLEW_RATE, NAV_SLEW_RATE);
@@ -2335,31 +2462,31 @@ void loop()
     {
         if ((f.ANGLE_MODE || f.HORIZON_MODE) && axis < 2 ) // MODE relying on ACC
         {
-             // 50 degrees max inclination
+            // 50 degrees max inclination
 #if defined(OPTFLOW) || defined(I2C_OPTFLOW)
             // ERIC: changed the angle from 500 to 400
-            errorAngle = constrain(2 * rcCommand[axis] + GPS_angle[axis] - optflow_angle[axis], -400, +400) - angle[axis] + conf.angleTrim[axis]; //16 bits is ok here
+            errorAngle = constrain(2 * rcCommand[axis] + GPS_angle[axis] - optflow_angle[axis], -400, +400) - att.angle[axis] + conf.angleTrim[axis]; //16 bits is ok here
 #else
-            errorAngle = constrain(2 * rcCommand[axis] + GPS_angle[axis], -500, +500) - angle[axis] + conf.angleTrim[axis]; //16 bits is ok here
+            errorAngle = constrain(2 * rcCommand[axis] + GPS_angle[axis], -500, +500) - att.angle[axis] + conf.angleTrim[axis]; //16 bits is ok here
 #endif
-            PTermACC = (int32_t)errorAngle * conf.P8[PIDLEVEL] / 100;                      // 32 bits is needed for calculation: errorAngle*P8[PIDLEVEL] could exceed 32768   16 bits is ok for result
-            PTermACC = constrain(PTermACC, -conf.D8[PIDLEVEL] * 5, +conf.D8[PIDLEVEL] * 5);
+            PTermACC = ((int32_t)errorAngle * conf.pid[PIDLEVEL].P8) >> 7;                      // 32 bits is needed for calculation: errorAngle*P8[PIDLEVEL] could exceed 32768   16 bits is ok for result
+            PTermACC = constrain(PTermACC, -conf.pid[PIDLEVEL].D8 * 5, +conf.pid[PIDLEVEL].D8 * 5);
 
             errorAngleI[axis]     = constrain(errorAngleI[axis] + errorAngle, -10000, +10000); // WindUp     //16 bits is ok here
-            ITermACC              = ((int32_t)errorAngleI[axis] * conf.I8[PIDLEVEL]) >> 12;        // 32 bits is needed for calculation:10000*I8 could exceed 32768   16 bits is ok for result
+            ITermACC              = ((int32_t)errorAngleI[axis] * conf.pid[PIDLEVEL].I8) >> 12;        // 32 bits is needed for calculation:10000*I8 could exceed 32768   16 bits is ok for result
         }
         if ( !f.ANGLE_MODE || f.HORIZON_MODE || axis == 2 )   // MODE relying on GYRO or YAW axis
         {
-            if (abs(rcCommand[axis]) < 500) error =          (rcCommand[axis] << 6) / conf.P8[axis] ; // 16 bits is needed for calculation: 500*64 = 32000      16 bits is ok for result if P8>5 (P>0.5)
-            else error = ((int32_t)rcCommand[axis] << 6) / conf.P8[axis] ; // 32 bits is needed for calculation
+            if (abs(rcCommand[axis]) < 500) error =          (rcCommand[axis] << 6) / conf.pid[axis].P8 ; // 16 bits is needed for calculation: 500*64 = 32000      16 bits is ok for result if P8>5 (P>0.5)
+            else error = ((int32_t)rcCommand[axis] << 6) / conf.pid[axis].P8 ; // 32 bits is needed for calculation
 
-            error -= gyroData[axis];
+            error -= imu.gyroData[axis];
 
             PTermGYRO = rcCommand[axis];
 
             errorGyroI[axis]  = constrain(errorGyroI[axis] + error, -16000, +16000);     // WindUp   16 bits is ok here
-            if (abs(gyroData[axis]) > 640) errorGyroI[axis] = 0;
-            ITermGYRO = ((errorGyroI[axis] >> 7) * conf.I8[axis]) >> 6;                  // 16 bits is ok here 16000/125 = 128 ; 128*250 = 32000
+            if (abs(imu.gyroData[axis]) > 640) errorGyroI[axis] = 0;
+            ITermGYRO = ((errorGyroI[axis] >> 7) * conf.pid[axis].I8) >> 6;                  // 16 bits is ok here 16000/125 = 128 ; 128*250 = 32000
         }
         if ( f.HORIZON_MODE && axis < 2)
         {
@@ -2380,10 +2507,10 @@ void loop()
             }
         }
 
-        PTerm -= ((int32_t)gyroData[axis] * dynP8[axis]) >> 6; // 32 bits is needed for calculation
+        PTerm -= ((int32_t)imu.gyroData[axis] * dynP8[axis]) >> 6; // 32 bits is needed for calculation
 
-        delta          = gyroData[axis] - lastGyro[axis];  // 16 bits is ok here, the dif between 2 consecutive gyro reads is limited to 800
-        lastGyro[axis] = gyroData[axis];
+        delta          = imu.gyroData[axis] - lastGyro[axis];  // 16 bits is ok here, the dif between 2 consecutive gyro reads is limited to 800
+        lastGyro[axis] = imu.gyroData[axis];
         deltaSum       = delta1[axis] + delta2[axis] + delta;
         delta2[axis]   = delta1[axis];
         delta1[axis]   = delta;

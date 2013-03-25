@@ -25,8 +25,8 @@ void computeIMU ()
     {
         // empirical, we take a weighted value of the current and the previous values
         // /4 is to average 4 values, note: overflow is not possible for WMP gyro here
-        gyroData[axis] = (gyroADC[axis] * 3 + gyroADCprevious[axis]) >> 2;
-        gyroADCprevious[axis] = gyroADC[axis];
+        imu.gyroData[axis] = (imu.gyroADC[axis] * 3 + gyroADCprevious[axis]) >> 2;
+        gyroADCprevious[axis] = imu.gyroADC[axis];
     }
 #else
 #if ACC
@@ -37,7 +37,7 @@ void computeIMU ()
     Gyro_getADC();
 #endif
     for (axis = 0; axis < 3; axis++)
-        gyroADCp[axis] =  gyroADC[axis];
+        gyroADCp[axis] =  imu.gyroADC[axis];
     timeInterleave = micros();
     annexCode();
     if ((micros() - timeInterleave) > 650)
@@ -53,24 +53,24 @@ void computeIMU ()
 #endif
     for (axis = 0; axis < 3; axis++)
     {
-        gyroADCinter[axis] =  gyroADC[axis] + gyroADCp[axis];
+        gyroADCinter[axis] =  imu.gyroADC[axis] + gyroADCp[axis];
         // empirical, we take a weighted value of the current and the previous values
-        gyroData[axis] = (gyroADCinter[axis] + gyroADCprevious[axis]) / 3;
+        imu.gyroData[axis] = (gyroADCinter[axis] + gyroADCprevious[axis]) / 3;
         gyroADCprevious[axis] = gyroADCinter[axis] >> 1;
-        if (!ACC) accADC[axis] = 0;
+        if (!ACC) imu.accADC[axis] = 0;
     }
 #endif
 #if defined(GYRO_SMOOTHING)
     static int16_t gyroSmooth[3] = {0, 0, 0};
     for (axis = 0; axis < 3; axis++)
     {
-        gyroData[axis] = (int16_t) ( ( (int32_t)((int32_t)gyroSmooth[axis] * (conf.Smoothing[axis] - 1) ) + gyroData[axis] + 1 ) / conf.Smoothing[axis]);
-        gyroSmooth[axis] = gyroData[axis];
+        imu.gyroData[axis] = (int16_t) ( ( (int32_t)((int32_t)gyroSmooth[axis] * (conf.Smoothing[axis] - 1) ) + imu.gyroData[axis] + 1 ) / conf.Smoothing[axis]);
+        gyroSmooth[axis] = imu.gyroData[axis];
     }
 #elif defined(TRI)
     static int16_t gyroYawSmooth = 0;
-    gyroData[YAW] = (gyroYawSmooth * 2 + gyroData[YAW]) / 3;
-    gyroYawSmooth = gyroData[YAW];
+    imu.gyroData[YAW] = (gyroYawSmooth * 2 + imu.gyroData[YAW]) / 3;
+    gyroYawSmooth = imu.gyroData[YAW];
 #endif
 }
 
@@ -100,7 +100,6 @@ void computeIMU ()
 #ifndef ACC_LPF_FACTOR
 #define ACC_LPF_FACTOR 4 // that means a LPF of 16
 #endif
-#define ACC_LPF_FOR_VELOCITY 12
 
 /* Set the Gyro Weight for Gyro/Acc complementary filter
    Increasing this value would reduce and delay Acc influence on the output of the filter*/
@@ -277,13 +276,13 @@ void getEstimatedAttitude()
     // Initialization
     for (axis = 0; axis < 3; axis++)
     {
-        deltaGyroAngle[axis] = gyroADC[axis]  * scale;
+        deltaGyroAngle[axis] = imu.gyroADC[axis]  * scale;
 
         accLPF32[axis]    -= accLPF32[axis] >> ACC_LPF_FACTOR;
-        accLPF32[axis]    += accADC[axis];
-        accSmooth[axis]    = accLPF32[axis] >> ACC_LPF_FACTOR;
+        accLPF32[axis]    += imu.accADC[axis];
+        imu.accSmooth[axis]    = accLPF32[axis] >> ACC_LPF_FACTOR;
 
-        accMag += (int32_t)accSmooth[axis] * accSmooth[axis] ;
+        accMag += (int32_t)imu.accSmooth[axis] * imu.accSmooth[axis] ;
     }
     accMag = accMag * 100 / ((int32_t)acc_1G * acc_1G);
 
@@ -292,7 +291,7 @@ void getEstimatedAttitude()
     rotateV(&EstM.V, deltaGyroAngle);
 #endif
 
-    if ( abs(accSmooth[ROLL]) < acc_25deg && abs(accSmooth[PITCH]) < acc_25deg && accSmooth[YAW] > 0)
+    if ( abs(imu.accSmooth[ROLL]) < acc_25deg && abs(imu.accSmooth[PITCH]) < acc_25deg && imu.accSmooth[YAW] > 0)
     {
         f.SMALL_ANGLES_25 = 1;
     }
@@ -302,17 +301,17 @@ void getEstimatedAttitude()
     }
 
     // Apply complimentary filter (Gyro drift correction)
-    // If accel magnitude >1.15G or <0.8G and ACC vector outside of the limit range => we neutralize the effect of accelerometers in the angle estimation.
+    // If accel magnitude >1.15G or <0.85G and ACC vector outside of the limit range => we neutralize the effect of accelerometers in the angle estimation.
     // To do that, we just skip filter, as EstV already rotated by Gyro
     if (  72 < accMag && accMag < 133 )
         for (axis = 0; axis < 3; axis++)
         {
-            EstG.A[axis] = (EstG.A[axis] * GYR_CMPF_FACTOR + accSmooth[axis]) * INV_GYR_CMPF_FACTOR;
+            EstG.A[axis] = (EstG.A[axis] * GYR_CMPF_FACTOR + imu.accSmooth[axis]) * INV_GYR_CMPF_FACTOR;
         }
 #if MAG
     for (axis = 0; axis < 3; axis++)
     {
-        EstM.A[axis] = (EstM.A[axis] * GYR_CMPFM_FACTOR  + magADC[axis]) * INV_GYR_CMPFM_FACTOR;
+        EstM.A[axis] = (EstM.A[axis] * GYR_CMPFM_FACTOR  + imu.magADC[axis]) * INV_GYR_CMPFM_FACTOR;
         EstM32.A[axis] = EstM.A[axis];
     }
 #endif
@@ -327,18 +326,17 @@ void getEstimatedAttitude()
     int32_t sqGX_sqGZ = sqGX + sqGZ;
     float invmagXZ  = InvSqrt(sqGX_sqGZ);
     invG = InvSqrt(sqGX_sqGZ + sqGY);
-    angle[ROLL]  = _atan2(EstG32.V.X , EstG32.V.Z);
-    angle[PITCH] = _atan2(EstG32.V.Y , invmagXZ * sqGX_sqGZ);
-
+    att.angle[ROLL]  = _atan2(EstG32.V.X , EstG32.V.Z);
+    att.angle[PITCH] = _atan2(EstG32.V.Y , invmagXZ * sqGX_sqGZ);
 
 #if MAG
-    heading = _atan2(
-                  EstM32.V.Z * EstG32.V.X - EstM32.V.X * EstG32.V.Z,
-                  EstM32.V.Y * invG * sqGX_sqGZ  - (EstM32.V.X * EstG32.V.X + EstM32.V.Z * EstG32.V.Z) * invG * EstG32.V.Y );
-    heading += MAG_DECLINIATION * 10; //add declination
-    heading = heading / 10;
-#endif
+    att.heading = _atan2(
+                      EstM32.V.Z * EstG32.V.X - EstM32.V.X * EstG32.V.Z,
+                      EstM32.V.Y * invG * sqGX_sqGZ  - (EstM32.V.X * EstG32.V.X + EstM32.V.Z * EstG32.V.Z) * invG * EstG32.V.Y );
+    att.heading += MAG_DECLINIATION * 10; //add declination
+    att.heading /= 10;
 
+#endif
     cosZ =  EstG32.V.Z * invG * 100.0f; // cos(angleZ) * 100.
 
 #if defined(THROTTLE_ANGLE_CORRECTION)
@@ -347,7 +345,7 @@ void getEstimatedAttitude()
 }
 
 #define UPDATE_INTERVAL 25000    // 40hz update rate (20hz LPF on acc)
-#define BARO_TAB_SIZE   21
+#define BARO_TAB_SIZE   10
 
 #define ACC_Z_DEADBAND (acc_1G>>5) // was 40 instead of 32 now
 
@@ -403,47 +401,47 @@ uint8_t getEstimatedAltitude()
         if (SonarErrors == 0)
         {
             // best case: SonarAlt + 0
-            EstAlt = SonarAlt;
+            alt.EstAlt = SonarAlt;
             // Sonar gives some errors: use cross-section of SONAR and BARO altitudes to softly switch to baro
         }
         else if (SonarErrors < SONAR_ERROR_MAX)
         {
             // worse case: SonarAlt + diff then lpf
-            EstAlt = (SonarAlt * (SONAR_ERROR_MAX - SonarErrors)
+            alt.EstAlt = (SonarAlt * (SONAR_ERROR_MAX - SonarErrors)
                       + (EstBaroAlt + baroSonarDiff.res) * SonarErrors)
                      / SONAR_ERROR_MAX;
         }
         else
         {
             // worst case: BaroAlt + diff
-            EstAlt = EstBaroAlt + baroSonarDiff.res;
+            alt.EstAlt = EstBaroAlt + baroSonarDiff.res;
         }
     }
     else
     {
         // worst case: BaroAlt + (+/-)300
         // Sonar is crasy, so use baro only + sonar value on the end of limits
-        EstAlt = EstBaroAlt + constrain(baroSonarDiff.res, -(300+150), (300+150));
+        alt.EstAlt = EstBaroAlt + constrain(baroSonarDiff.res, -(300+150), (300+150));
     }
 #else
-    EstAlt = (EstAlt * 6 + BaroAlt * 2) >> 3; // additional LPF to reduce baro noise (faster by 30 µs)
+    alt.EstAlt = (alt.EstAlt * 6 + BaroAlt * 2) >> 3; // additional LPF to reduce baro noise (faster by 30 µs)
 #endif
 
 #if (defined(VARIOMETER) && (VARIOMETER != 2)) || !defined(SUPPRESS_BARO_ALTHOLD) || (defined(FAILSAFE) && (defined(FAILSAFE_ALT_MODE) || defined(FAILSAFE_RTH_MODE)))
-
+    
     //P
-    int16_t error16 = constrain((AltHold / 10) - EstAlt, -400, 400); // Modify constrain limits during rising/descending
+    int16_t error16 = constrain(alt.AltHold / 10 - alt.EstAlt, -400, 400);
     applyDeadband(error16, 10); //remove small P parametr to reduce noise near zero position
-    BaroPID = constrain((conf.P8[PIDALT] * error16  >> 7), -200, 200);
+    BaroPID = constrain((conf.pid[PIDALT].P8 * error16 >> 7), -200, +200);
 
     //I
-    errorAltitudeI += conf.I8[PIDALT] * error16 >> 6;
+    errorAltitudeI += conf.pid[PIDALT].I8 * error16 >> 6;
     errorAltitudeI = constrain(errorAltitudeI, -30000, 30000);
     BaroPID += errorAltitudeI >> 9; //I in range +/-60
 
     // projection of ACC vector to global Z, with 1G subtructed
     // Math: accZ = A * G / |G| - 1G
-    int16_t accZ = (accSmooth[ROLL] * EstG32.V.X + accSmooth[PITCH] * EstG32.V.Y + accSmooth[YAW] * EstG32.V.Z) * invG;
+    int16_t accZ = (imu.accSmooth[ROLL] * EstG32.V.X + imu.accSmooth[PITCH] * EstG32.V.Y + imu.accSmooth[YAW] * EstG32.V.Z) * invG;
 
     static int16_t accZoffset = 0; // = acc_1G*6; //58 bytes saved and convergence is fast enough to omit init
     if (!f.ARMED)
@@ -468,8 +466,8 @@ uint8_t getEstimatedAltitude()
     vel += accZ * accVelScale * dTime;
 
     static int32_t lastBaroAlt;
-    int16_t baroVel = (EstAlt - lastBaroAlt) * 1000000.0f / dTime;
-    lastBaroAlt = EstAlt;
+    int16_t baroVel = (alt.EstAlt - lastBaroAlt) * 1000000.0f / dTime;
+    lastBaroAlt = alt.EstAlt;
 
     baroVel = constrain(baroVel, -300, 300); // constrain baro velocity +/- 300cm/s
     applyDeadband(baroVel, 10); // to reduce noise near zero
@@ -477,18 +475,18 @@ uint8_t getEstimatedAltitude()
     // apply Complimentary Filter to keep the calculated velocity based on baro velocity (i.e. near real velocity).
     // By using CF it's possible to correct the drift of integrated accZ (velocity) without loosing the phase, i.e without delay
     vel = vel * 0.985f + baroVel * 0.015f;
+    debug[3] = vel;
 
     //D
     int16_t vel_tmp = vel;
     applyDeadband(vel_tmp, 5);
-    vario = vel_tmp;
+    alt.vario = vel_tmp;
 
 #if defined(VARIO_ALT_MODE) || defined(RTH_ALT_MODE) || defined(FAILSAFE_RTH_MODE) || defined(WP_ALT_MODE)
     vel_tmp -= targetVario;
 #endif
 
-    BaroPID -= constrain(conf.D8[PIDALT] * vel_tmp >> 4, -150, 150);
-
+    BaroPID -= constrain(conf.pid[PIDALT].D8 * vel_tmp >> 4, -150, 150);
 #endif
     return 1;
 }

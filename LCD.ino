@@ -1073,29 +1073,29 @@ const char PROGMEM lcd_param_text135 [] = "Govern Rpm";
 
 PROGMEM const void *const lcd_param_ptr_table [] =
 {
-    &lcd_param_text01, &conf.P8[ROLL], &__P,
-    &lcd_param_text02, &conf.P8[ROLL], &__P,
-    &lcd_param_text03, &conf.I8[ROLL], &__I,
-    &lcd_param_text04, &conf.D8[ROLL], &__D,
-    &lcd_param_text05, &conf.P8[PITCH], &__P,
-    &lcd_param_text06, &conf.I8[PITCH], &__I,
-    &lcd_param_text07, &conf.D8[PITCH], &__D,
-    &lcd_param_text08, &conf.P8[YAW], &__P,
-    &lcd_param_text09, &conf.I8[YAW], &__I,
-    &lcd_param_text10, &conf.D8[YAW], &__D,
+    &lcd_param_text01, &conf.pid[ROLL].P8, &__P,
+    &lcd_param_text02, &conf.pid[ROLL].P8, &__P,
+    &lcd_param_text03, &conf.pid[ROLL].I8, &__I,
+    &lcd_param_text04, &conf.pid[ROLL].D8, &__D,
+    &lcd_param_text05, &conf.pid[PITCH].P8, &__P,
+    &lcd_param_text06, &conf.pid[PITCH].I8, &__I,
+    &lcd_param_text07, &conf.pid[PITCH].D8, &__D,
+    &lcd_param_text08, &conf.pid[YAW].P8, &__P,
+    &lcd_param_text09, &conf.pid[YAW].I8, &__I,
+    &lcd_param_text10, &conf.pid[YAW].D8, &__D,
 #if BARO && (!defined(SUPPRESS_BARO_ALTHOLD))
-    &lcd_param_text11, &conf.P8[PIDALT], &__P,
-    &lcd_param_text12, &conf.I8[PIDALT], &__I,
-    &lcd_param_text13, &conf.D8[PIDALT], &__D,
-    &lcd_param_text14, &conf.P8[PIDVEL], &__P,
-    &lcd_param_text15, &conf.I8[PIDVEL], &__I,
-    &lcd_param_text16, &conf.D8[PIDVEL], &__D,
+    &lcd_param_text11, &conf.pid[PIDALT].P8, &__P,
+    &lcd_param_text12, &conf.pid[PIDALT].I8, &__I,
+    &lcd_param_text13, &conf.pid[PIDALT].D8, &__D,
+    &lcd_param_text14, &conf.pid[PIDVEL].P8, &__P,
+    &lcd_param_text15, &conf.pid[PIDVEL].I8, &__I,
+    &lcd_param_text16, &conf.pid[PIDVEL].D8, &__D,
 #endif
-    &lcd_param_text17, &conf.P8[PIDLEVEL], &__P,
-    &lcd_param_text18, &conf.I8[PIDLEVEL], &__I,
-    &lcd_param_text188, &conf.D8[PIDLEVEL], &__D,
+    &lcd_param_text17, &conf.pid[PIDLEVEL].P8, &__P,
+    &lcd_param_text18, &conf.pid[PIDLEVEL].I8, &__I,
+    &lcd_param_text188, &conf.pid[PIDLEVEL].D8, &__D,
 #if MAG
-    &lcd_param_text19, &conf.P8[PIDMAG], &__P,
+    &lcd_param_text19, &conf.pid[PIDMAG].P8, &__P,
 #endif
     &lcd_param_text20t, &conf.thrMid8, &__RC,
     &lcd_param_text21t, &conf.thrExpo8, &__RC,
@@ -1105,14 +1105,14 @@ PROGMEM const void *const lcd_param_ptr_table [] =
     &lcd_param_text23, &conf.yawRate, &__RC,
     &lcd_param_text24, &conf.dynThrPID, &__RC,
 #if GPS
-    &lcd_param_text91, &conf.P8[PIDPOS] , &__RC,
-    &lcd_param_text92, &conf.I8[PIDPOS] , &__I,
-    &lcd_param_text93, &conf.P8[PIDPOSR], &__P,
-    &lcd_param_text94, &conf.I8[PIDPOSR], &__I,
-    &lcd_param_text95, &conf.D8[PIDPOSR], &__I,
-    &lcd_param_text96, &conf.P8[PIDNAVR], &__P,
-    &lcd_param_text97, &conf.I8[PIDNAVR], &__RC,
-    &lcd_param_text98, &conf.D8[PIDNAVR], &__I,
+    &lcd_param_text91, &conf.pid[PIDPOS].P8 , &__RC,
+    &lcd_param_text92, &conf.pid[PIDPOS].I8 , &__I,
+    &lcd_param_text93, &conf.pid[PIDPOSR].P8, &__P,
+    &lcd_param_text94, &conf.pid[PIDPOSR].I8, &__I,
+    &lcd_param_text95, &conf.pid[PIDPOSR].D8, &__I,
+    &lcd_param_text96, &conf.pid[PIDNAVR].P8, &__P,
+    &lcd_param_text97, &conf.pid[PIDNAVR].I8, &__RC,
+    &lcd_param_text98, &conf.pid[PIDNAVR].D8, &__I,
 #endif
 #ifdef LCD_CONF_AUX
 #if ACC
@@ -1281,7 +1281,7 @@ PROGMEM const void *const lcd_param_ptr_table [] =
     &lcd_param_text101, &conf.failsafe_throttle, &__ST,
 #endif
 #ifdef VBAT
-    &lcd_param_text35, &vbat, &__VB,
+    &lcd_param_text35, &analog.vbat, &__VB,
     &lcd_param_text102, &conf.vbatscale, &__PT,
     &lcd_param_text103, &conf.vbatlevel_warn1, &__P,
     &lcd_param_text104, &conf.vbatlevel_warn2, &__P,
@@ -1326,7 +1326,7 @@ PROGMEM const void *const lcd_param_ptr_table [] =
 #endif
 
     //#ifdef LOG_VALUES
-    //  &lcd_param_text39, &failsafeEvents, &__L,
+    //  &lcd_param_text39, &failsafe.events, &__L,
     //  &lcd_param_text40, &i2c_errors_count, &__L,
     //  &lcd_param_text41, &annex650_overrun_count, &__L
     //#endif
@@ -1581,14 +1581,14 @@ void configurationLoop()
             refreshLCD = 1;
             lcd_param_def_t *deft = (lcd_param_def_t *)pgm_read_word(&(lcd_param_ptr_table[(p * 3) + 2]));
             deft->type->inc((void *)pgm_read_word(&(lcd_param_ptr_table[(p * 3) + 1])), -(IsHigh(THROTTLE) ? 10 : 1) * deft->increment);
-            if (p == 0) conf.P8[PITCH] = conf.P8[ROLL];
+            if (p == 0) conf.pid[PITCH].P8 = conf.pid[ROLL].P8;
         }
         else if (key == LCD_VALUE_UP || (IsHigh(ROLL)))
         {
             refreshLCD = 1;
             lcd_param_def_t *deft = (lcd_param_def_t *)pgm_read_word(&(lcd_param_ptr_table[(p * 3) + 2]));
             deft->type->inc((void *)pgm_read_word(&(lcd_param_ptr_table[(p * 3) + 1])), +(IsHigh(THROTTLE) ? 10 : 1) * deft->increment);
-            if (p == 0) conf.P8[PITCH] = conf.P8[ROLL];
+            if (p == 0) conf.pid[PITCH].P8 = conf.pid[ROLL].P8;
         }
     } // while (LCD == 1)
     blinkLED(20, 30, 1);
@@ -1668,24 +1668,24 @@ void fill_line1_deg()
     uint16_t unit;
     strcpy_P(line1, PSTR("Deg ---.-  ---.-"));
     // 0123456789.12345
-    if (angle[0] < 0 )
+    if (att.angle[0] < 0 )
     {
-        unit = -angle[0];
+        unit = -att.angle[0];
         line1[3] = '-';
     }
     else
-        unit = angle[0];
+        unit = att.angle[0];
     line1[4] = digit1000(unit);
     line1[5] = digit100(unit);
     line1[6] = digit10(unit);
     line1[8] = digit1(unit);
-    if (angle[1] < 0 )
+    if (att.angle[1] < 0 )
     {
-        unit = -angle[1];
+        unit = -att.angle[1];
         line1[10] = '-';
     }
     else
-        unit = angle[1];
+        unit = att.angle[1];
     line1[11] = digit1000(unit);
     line1[12] = digit100(unit);
     line1[13] = digit10(unit);
@@ -1714,14 +1714,14 @@ void output_V()
 #ifdef VBAT
     strcpy_P(line1, PSTR(" --.-V"));
     //                   0123456789.12345
-    line1[1] = digit100(vbat);
-    line1[2] = digit10(vbat);
-    line1[4] = digit1(vbat);
-    if (vbat < conf.vbatlevel_warn1)
+    line1[1] = digit100(analog.vbat);
+    line1[2] = digit10(analog.vbat);
+    line1[4] = digit1(analog.vbat);
+    if (analog.vbat < conf.vbatlevel_warn1)
     {
         LCDattributesReverse();
     }
-    LCDbar(7, (((vbat - conf.vbatlevel_warn1) * 100) / (VBATNOMINAL - conf.vbatlevel_warn1)) );
+    LCDbar(7, (((analog.vbat - conf.vbatlevel_warn1) * 100) / (VBATNOMINAL - conf.vbatlevel_warn1)) );
     LCDattributesOff(); // turn Reverse off for rest of display
     LCDprintChar(line1);
 #endif
@@ -1748,14 +1748,14 @@ void output_mAh()
 {
 #ifdef POWERMETER
     strcpy_P(line1, PSTR(" -----mAh"));
-    line1[1] = digit10000(intPowerMeterSum);
-    line1[2] = digit1000(intPowerMeterSum);
-    line1[3] = digit100(intPowerMeterSum);
-    line1[4] = digit10(intPowerMeterSum);
-    line1[5] = digit1(intPowerMeterSum);
+    line1[1] = digit10000(analog.intPowerMeterSum);
+    line1[2] = digit1000(analog.intPowerMeterSum);
+    line1[3] = digit100(analog.intPowerMeterSum);
+    line1[4] = digit10(analog.intPowerMeterSum);
+    line1[5] = digit1(analog.intPowerMeterSum);
     if (conf.powerTrigger1)
     {
-        int8_t v = 100 - ( intPowerMeterSum / (uint16_t)conf.powerTrigger1) * 2; // bar graph powermeter (scale intPowerMeterSum/powerTrigger1 with *100/PLEVELSCALE)
+        int8_t v = 100 - ( analog.intPowerMeterSum / (uint16_t)conf.powerTrigger1) * 2; // bar graph powermeter (scale intPowerMeterSum/powerTrigger1 with *100/PLEVELSCALE)
         if (v <= 0)
         {
             LCDattributesReverse();    // buzzer on? then add some blink for attention
@@ -1798,7 +1798,7 @@ void output_fails()
     uint16_t unit;
     //                   0123456789012345
     strcpy_P(line2, PSTR("-- Fails  -- i2c"));
-    unit = failsafeEvents;
+    unit = failsafe.events;
     //line2[0] = '0' + unit / 1000 - (unit/10000) * 10;
     //line2[1] = '0' + unit / 100  - (unit/1000)  * 10;
     line2[0] = digit10(unit);
@@ -1914,7 +1914,7 @@ void print_uptime(uint16_t sec)
 void fill_line1_gps_lat(uint8_t sat)
 {
     int32_t aGPS_latitude = abs(GPS_coord[LAT]);
-    strcpy_P(line1, PSTR(".---.-----      "));
+    strcpy_P(line1, PSTR(".---.-------    "));
     //                   0123456789012345
     line1[0] = GPS_coord[LAT] < 0 ? 'S' : 'N';
     if (sat)
@@ -1922,20 +1922,22 @@ void fill_line1_gps_lat(uint8_t sat)
         line1[13] = '#';
         line1[14] = digit10(GPS_numSat);
         line1[15] = digit1(GPS_numSat);
-    }
-    line1[1] = '0' + aGPS_latitude / 10000000 - (aGPS_latitude / 100000000) * 10;
-    line1[2] = '0' + aGPS_latitude / 1000000 - (aGPS_latitude / 10000000) * 10;
-    line1[3] = '0' + aGPS_latitude / 100000  - (aGPS_latitude / 1000000)  * 10;
-    line1[5] = '0' + aGPS_latitude / 10000   - (aGPS_latitude / 100000)   * 10;
-    line1[6] = '0' + aGPS_latitude / 1000 -    (aGPS_latitude / 10000) * 10;
-    line1[7] = '0' + aGPS_latitude / 100  -    (aGPS_latitude / 1000)  * 10;
-    line1[8] = '0' + aGPS_latitude / 10   -    (aGPS_latitude / 100)   * 10;
-    line1[9] = '0' + aGPS_latitude        -    (aGPS_latitude / 10)    * 10;
+    } //                                987654321
+    line1[1]  = '0' + aGPS_latitude  / 1000000000;
+    line1[2]  = '0' + aGPS_latitude  / 100000000 - (aGPS_latitude / 1000000000) * 10;
+    line1[3]  = '0' + aGPS_latitude  / 10000000  - (aGPS_latitude / 100000000)  * 10;
+    line1[5]  = '0' + aGPS_latitude  / 1000000   - (aGPS_latitude / 10000000)   * 10;
+    line1[6]  = '0' + aGPS_latitude  / 100000    - (aGPS_latitude / 1000000)    * 10;
+    line1[7]  = '0' + aGPS_latitude  / 10000     - (aGPS_latitude / 100000)     * 10;
+    line1[8]  = '0' + aGPS_latitude  / 1000      - (aGPS_latitude / 10000)      * 10;
+    line1[9]  = '0' + aGPS_latitude  / 100       - (aGPS_latitude / 1000)       * 10;
+    line1[10] = '0' + aGPS_latitude  / 10        - (aGPS_latitude / 100)        * 10;
+    line1[11] = '0' + aGPS_latitude              - (aGPS_latitude / 10)         * 10;
 }
 void fill_line2_gps_lon(uint8_t status)
 {
     int32_t aGPS_longitude = abs(GPS_coord[LON]);
-    strcpy_P(line2, PSTR(".---.-----      "));
+    strcpy_P(line2, PSTR(".---.-------    "));
     //                   0123456789012345
     line2[0] = GPS_coord[LON] < 0 ? 'W' : 'E';
     if (status)
@@ -1943,14 +1945,16 @@ void fill_line2_gps_lon(uint8_t status)
         line2[13] = (GPS_update ? 'U' : '.');
         line2[15] = (GPS_Present ? 'P' : '.');
     }
-    line2[1] = '0' + aGPS_longitude / 10000000 - (aGPS_longitude / 100000000) * 10;
-    line2[2] = '0' + aGPS_longitude / 1000000 - (aGPS_longitude / 10000000) * 10;
-    line2[3] = '0' + aGPS_longitude / 100000  - (aGPS_longitude / 1000000)  * 10;
-    line2[5] = '0' + aGPS_longitude / 10000   - (aGPS_longitude / 100000)   * 10;
-    line2[6] = '0' + aGPS_longitude / 1000    - (aGPS_longitude / 10000) * 10;
-    line2[7] = '0' + aGPS_longitude / 100     - (aGPS_longitude / 1000)  * 10;
-    line2[8] = '0' + aGPS_longitude / 10      - (aGPS_longitude / 100)   * 10;
-    line2[9] = '0' + aGPS_longitude           - (aGPS_longitude / 10)    * 10;
+    line2[1]  = '0' + aGPS_longitude / 1000000000;
+    line2[2]  = '0' + aGPS_longitude / 100000000 - (aGPS_longitude / 1000000000) * 10;
+    line2[3]  = '0' + aGPS_longitude / 10000000  - (aGPS_longitude / 100000000)  * 10;
+    line2[5]  = '0' + aGPS_longitude / 1000000   - (aGPS_longitude / 10000000)   * 10;
+    line2[6]  = '0' + aGPS_longitude / 100000    - (aGPS_longitude / 1000000)    * 10;
+    line2[7]  = '0' + aGPS_longitude / 10000     - (aGPS_longitude / 100000)     * 10;
+    line2[8]  = '0' + aGPS_longitude / 1000      - (aGPS_longitude / 10000)      * 10;
+    line2[9]  = '0' + aGPS_longitude / 100       - (aGPS_longitude / 1000)       * 10;
+    line2[10] = '0' + aGPS_longitude / 10        - (aGPS_longitude / 100)        * 10;
+    line2[11] = '0' + aGPS_longitude             - (aGPS_longitude / 10)         * 10;
 }
 #endif
 
@@ -2196,7 +2200,7 @@ void lcd_telemetry()
             output_mAh();
             break;
         case 4:// errors or ...
-            if (failsafeEvents || (i2c_errors_count >> 10)) // errors
+            if (failsafe.events || (i2c_errors_count >> 10)) // errors
             {
                 // ignore i2c==1 because of bma020-init
                 LCDalarmAndReverse();
@@ -2277,28 +2281,28 @@ void lcd_telemetry()
         switch (i)
         {
         case 0:
-            lcdprint_int16(gyroData[0]); LCDprint(' ');
-            outputSensor(10, gyroData[0], GYROLIMIT);
+            lcdprint_int16(imu.gyroData[0]); LCDprint(' ');
+            outputSensor(10, imu.gyroData[0], GYROLIMIT);
             break;
         case 1:
-            lcdprint_int16(gyroData[1]); LCDprint(' ');
-            outputSensor(10, gyroData[1], GYROLIMIT);
+            lcdprint_int16(imu.gyroData[1]); LCDprint(' ');
+            outputSensor(10, imu.gyroData[1], GYROLIMIT);
             break;
         case 2:
-            lcdprint_int16(gyroData[2]); LCDprint(' ');
-            outputSensor(10, gyroData[2], GYROLIMIT);
+            lcdprint_int16(imu.gyroData[2]); LCDprint(' ');
+            outputSensor(10, imu.gyroData[2], GYROLIMIT);
             break;
         case 3:
-            lcdprint_int16(accSmooth[0]); LCDprint(' ');
-            outputSensor(10, accSmooth[0], ACCLIMIT);
+            lcdprint_int16(imu.accSmooth[0]); LCDprint(' ');
+            outputSensor(10, imu.accSmooth[0], ACCLIMIT);
             break;
         case 4:
-            lcdprint_int16(accSmooth[1]); LCDprint(' ');
-            outputSensor(10, accSmooth[1], ACCLIMIT);
+            lcdprint_int16(imu.accSmooth[1]); LCDprint(' ');
+            outputSensor(10, imu.accSmooth[1], ACCLIMIT);
             break;
         case 5:
-            lcdprint_int16(accSmooth[2]); LCDprint(' ');
-            outputSensor(10, accSmooth[2] - acc_1G, ACCLIMIT);
+            lcdprint_int16(imu.accSmooth[2]); LCDprint(' ');
+            outputSensor(10, imu.accSmooth[2] - acc_1G, ACCLIMIT);
             break;
         }
         LCDcrlf();
@@ -2535,7 +2539,7 @@ void lcd_telemetry()
         BAROaltMax = 0;
 #endif
 #endif
-        failsafeEvents = 0; // reset failsafe counter
+        failsafe.events = 0; // reset failsafe counter
         i2c_errors_count = 0;
         f.OK_TO_ARM = 1; // allow arming again
         telemetry = 0; // no use to repeat this forever

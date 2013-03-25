@@ -25,7 +25,7 @@ static uint8_t inBuf[INBUF_SIZE][UART_NUMBER];
 #endif
 // Capability is bit flags; next defines should be 2, 4, 8...
 
-const uint32_t PROGMEM capability = 0 + BIND_CAPABLE;
+const uint32_t capability = 0 + BIND_CAPABLE;
 
 #ifdef DEBUGMSG
 #define DEBUG_MSG_BUFFER_SIZE 128
@@ -138,6 +138,7 @@ void tailSerialReply()
 
 void serializeNames(PGM_P s)
 {
+    headSerialReply(strlen_P(s));
     for (PGM_P c = s; pgm_read_byte(c); c++)
     {
         serialize8(pgm_read_byte(c));
@@ -236,20 +237,36 @@ void serialCom()
         }
     }
 }
+
+void  s_struct(uint8_t *cb, uint8_t siz)
+{
+    headSerialReply(siz);
+    while (siz--) serialize8(*cb++);
+}
+
+void s_struct_w(uint8_t *cb, uint8_t siz)
+{
+    headSerialReply(0);
+    while (siz--) *cb++ = read8();
+}
+
 #ifndef SUPPRESS_ALL_SERIAL_MSP
 void evaluateCommand()
 {
     switch (cmdMSP[CURRENTPORT])
     {
-#if defined(RCSERIAL)
-#if defined(RCSERIAL_RC_OFFLOAD)
+#if defined(RCSERIAL) && defined(FAILSAFE) && defined(RCSERIAL_RC_OFFLOAD)
     case MSP_SET_RAW_RC_REPEAT:
         //headSerialReply(0);
-#if defined(FAILSAFE)
-        if (failsafeCnt > 20) failsafeCnt -= 20; else failsafeCnt = 0;
-#endif
+
+        if (failsafeCnt > 20) 
+            failsafeCnt -= 20;  
+        else  
+            failsafeCnt = 0;
+
+        // do not send head/tail reply
+        return;
         break;
-#endif
 #endif
 
     case MSP_SET_RAW_RC:
@@ -266,19 +283,17 @@ void evaluateCommand()
             rcData[4 + i] = 1000 + (500 * ((auxValues >> (i << 1)) & 0b11));
         }
     }
-#else    
-        for (uint8_t i = 0; i < 8; i++)
-        {
-            rcData[i] = read16();
-        }
-#endif
         headSerialReply(0);
-
-#if defined(RCSERIAL)
-#if defined(FAILSAFE)
-        // If pulse present on THROTTLE pin (independent from ardu version), clear FailSafe counter  - added by MIS
-        if (failsafeCnt > 25) failsafeCnt -= 25; else failsafeCnt = 0;
+#else    
+        s_struct_w((uint8_t *)&rcData, 16);
 #endif
+
+#if defined(RCSERIAL) && defined(FAILSAFE)
+        // If pulse present on THROTTLE pin (independent from ardu version), clear FailSafe counter  - added by MIS
+        if (failsafeCnt > 25) 
+            failsafeCnt -= 25; 
+        else 
+            failsafeCnt = 0;
 #endif
         break;
 #if GPS
@@ -294,30 +309,13 @@ void evaluateCommand()
         break;
 #endif
     case MSP_SET_PID:
-        for (uint8_t i = 0; i < PIDITEMS; i++)
-        {
-            conf.P8[i] = read8();
-            conf.I8[i] = read8();
-            conf.D8[i] = read8();
-        }
-        headSerialReply(0);
+        s_struct_w((uint8_t *)&conf.pid[0].P8, 3 * PIDITEMS);
         break;
     case MSP_SET_BOX:
-        for (uint8_t i = 0; i < CHECKBOXITEMS; i++)
-        {
-            conf.activate[i] = read16();
-        }
-        headSerialReply(0);
+        s_struct_w((uint8_t *)&conf.activate[0], CHECKBOXITEMS * 2);
         break;
     case MSP_SET_RC_TUNING:
-        conf.rcRate8 = read8();
-        conf.rcExpo8 = read8();
-        conf.rollPitchRate = read8();
-        conf.yawRate = read8();
-        conf.dynThrPID = read8();
-        conf.thrMid8 = read8();
-        conf.thrExpo8 = read8();
-        headSerialReply(0);
+        s_struct_w((uint8_t *)&conf.rcRate8, 7);
         break;
     case MSP_SET_MISC:
 #if defined(POWERMETER)
@@ -338,22 +336,31 @@ void evaluateCommand()
         break;
 #endif
     case MSP_SET_HEAD:
-        magHold = read16();
-        headSerialReply(0);
+        s_struct_w((uint8_t *)&att.magHold, 2);
         break;
     case MSP_IDENT:
-        headSerialReply(7);
-        serialize8(VERSION);   // multiwii version
-        serialize8(MULTITYPE); // type of multicopter
-        serialize8(MSP_VERSION);         // MultiWii Serial Protocol Version
-        serialize32(pgm_read_dword(&(capability)));        // "capability"
+        struct
+        {
+            uint8_t v, t, msp_v;
+            uint32_t cap;
+        } id;
+        id.v     = VERSION;
+        id.t     = MULTITYPE;
+        id.msp_v = MSP_VERSION;
+        id.cap   = capability;
+        s_struct((uint8_t *)&id, 7);
         break;
     case MSP_STATUS:
-        headSerialReply(11);
-        serialize16(cycleTime);
-        serialize16(i2c_errors_count);
-        serialize16(ACC | BARO << 1 | MAG << 2 | GPS << 3 | SONAR << 4);
-        serialize32(
+        struct
+        {
+            uint16_t cycleTime, i2c_errors_count, sensor;
+            uint32_t flag;
+            uint8_t set;
+        } st;
+        st.cycleTime        = cycleTime;
+        st.i2c_errors_count = i2c_errors_count;
+        st.sensor           = ACC | BARO << 1 | MAG << 2 | GPS << 3 | SONAR << 4;
+        st.flag =
 #if ACC
             f.ANGLE_MODE << BOXANGLE |
             f.HORIZON_MODE << BOXHORIZON |
@@ -367,7 +374,7 @@ void evaluateCommand()
 #if MAG
             f.MAG_MODE << BOXMAG | f.HEADFREE_MODE << BOXHEADFREE | rcOptions[BOXHEADADJ] << BOXHEADADJ |
 #endif
-#if defined(SERVO_TILT) || defined(GIMBAL)|| defined(SERVO_MIX_TILT)
+#if defined(SERVO_TILT) || defined(GIMBAL)|| defined(SERVO_MIX_TILT) || defined(SERVO_TILT_NHADRIAN)
             rcOptions[BOXCAMSTAB] << BOXCAMSTAB |
 #endif
 #if defined(CAMTRIG)
@@ -400,34 +407,25 @@ void evaluateCommand()
 #if defined(OSD_SWITCH)
             rcOptions[BOXOSD] << BOXOSD |
 #endif
-            f.ARMED << BOXARM);
-        serialize8(global_conf.currentSet);   // current setting
+#if defined(AUTOLAND) && BARO && GPS
+            f.AUTOLAND_MODE << BOXAUTOLAND |
+#endif
+            f.ARMED << BOXARM;
+
+        st.set              = global_conf.currentSet;
+        s_struct((uint8_t *)&st, 11);
         break;
     case MSP_RAW_IMU:
-        headSerialReply(18);
-        for (uint8_t i = 0; i < 3; i++) serialize16(accSmooth[i]);
-        for (uint8_t i = 0; i < 3; i++) serialize16(gyroData[i]);
-        for (uint8_t i = 0; i < 3; i++) serialize16(magADC[i]);
+        s_struct((uint8_t *)&imu, 18);
         break;
     case MSP_SERVO:
-        headSerialReply(16);
-        for (uint8_t i = 0; i < 8; i++)
-#if defined(SERVO)
-            serialize16(servo[i]);
-#else
-            serialize16(0);
-#endif
+        s_struct((uint8_t *)&servo, 16);
         break;
     case MSP_MOTOR:
-        headSerialReply(16);
-        for (uint8_t i = 0; i < 8; i++)
-        {
-            serialize16( (i < NUMBER_MOTOR) ? motor[i] : 0 );
-        }
+        s_struct((uint8_t *)&motor, 16);
         break;
     case MSP_RC:
-        headSerialReply(RC_CHANS * 2);
-        for (uint8_t i = 0; i < RC_CHANS; i++) serialize16(rcData[i]);
+        s_struct((uint8_t *)&rcData, RC_CHANS * 2);
         break;
 #if GPS
     case MSP_RAW_GPS:
@@ -448,55 +446,27 @@ void evaluateCommand()
         break;
 #endif
     case MSP_ATTITUDE:
-        headSerialReply(8);
-        for (uint8_t i = 0; i < 2; i++) serialize16(angle[i]);
-        serialize16(heading);
-        serialize16(headFreeModeHold);
+        s_struct((uint8_t *)&att, 10);
         break;
     case MSP_ALTITUDE:
-        headSerialReply(10);
-        serialize32(EstAlt);
-        serialize16(vario);                  // added since r1172
-        serialize32(AltHold / 10);
+        s_struct((uint8_t *)&alt, 10);
         break;
     case MSP_ANALOG:
-        headSerialReply(5);
-        serialize8(vbat);
-        serialize16(intPowerMeterSum);
-        serialize16(rssi);
+        s_struct((uint8_t *)&analog, 5);
         break;
     case MSP_RC_TUNING:
-        headSerialReply(7);
-        serialize8(conf.rcRate8);
-        serialize8(conf.rcExpo8);
-        serialize8(conf.rollPitchRate);
-        serialize8(conf.yawRate);
-        serialize8(conf.dynThrPID);
-        serialize8(conf.thrMid8);
-        serialize8(conf.thrExpo8);
+        s_struct((uint8_t *)&conf.rcRate8, 7);
         break;
     case MSP_PID:
-        headSerialReply(3 * PIDITEMS);
-        for (uint8_t i = 0; i < PIDITEMS; i++)
-        {
-            serialize8(conf.P8[i]);
-            serialize8(conf.I8[i]);
-            serialize8(conf.D8[i]);
-        }
+        s_struct((uint8_t *)&conf.pid[0].P8, 3 * PIDITEMS);
         break;
     case MSP_PIDNAMES:
-        headSerialReply(strlen_P(pidnames));
         serializeNames(pidnames);
         break;
     case MSP_BOX:
-        headSerialReply(2 * CHECKBOXITEMS);
-        for (uint8_t i = 0; i < CHECKBOXITEMS; i++)
-        {
-            serialize16(conf.activate[i]);
-        }
+        s_struct((uint8_t *)&conf.activate[0], 2 * CHECKBOXITEMS);
         break;
     case MSP_BOXNAMES:
-        headSerialReply(strlen_P(boxnames));
         serializeNames(boxnames);
         break;
     case MSP_BOXIDS:
@@ -507,91 +477,88 @@ void evaluateCommand()
         }
         break;
     case MSP_MISC:
-        headSerialReply(2);
-        serialize16(intPowerTrigger1);
+        s_struct((uint8_t *)&intPowerTrigger1, 2);
         break;
     case MSP_MOTOR_PINS:
-        headSerialReply(8);
-        for (uint8_t i = 0; i < 8; i++)
-        {
-            serialize8(PWM_PIN[i]);
-        }
+        s_struct((uint8_t *)&PWM_PIN, 8);
         break;
-   #if defined(USE_MSP_WP)    
-   case MSP_WP:
-     {
-       int32_t lat = 0,lon = 0;
-       uint8_t wp_no = read8();        //get the wp number  
-       headSerialReply(18);
-       if (wp_no == 0) {
-         lat = WP[HOME].Lat;
-         lon = WP[HOME].Lon;
-       } else if (wp_no == 16) {
-         lat = WP[HOLD].Lat;
-         lon = WP[HOLD].Lon;
-       }
-       serialize8(wp_no);
-       serialize32(lat);
-       serialize32(lon);
-       serialize32(AltHold/10);        //altitude (cm) will come here -- temporary implementation to test feature with apps
-       serialize16(0);                 //heading  will come here (deg)
-       serialize16(0);                 //time to stay (ms) will come here 
-       serialize8(0);                  //nav flag will come here
-     }
-     break;
-   case MSP_SET_WP:
-     {
-       int32_t lat = 0,lon = 0,alt = 0;
-       uint8_t wp_no = read8();        //get the wp number
-       lat = read32();
-       lon = read32();
-       alt = read32();                 // to set altitude (cm)
-       read16();                       // future: to set heading (deg)
-       read16();                       // future: to set time to stay (ms)
-       read8();                        // future: to set nav flag
-       if (wp_no == 0) {
-         WP[HOME].Lat = lat;
-         WP[HOME].Lon = lon;
-
-         #if defined(I2C_GPS)
-         i2c_rep_start(I2C_GPS_ADDRESS << 1);
-         i2c_write(I2C_GPS_WP0);
-         uint8_t* ptr = (uint8_t*)&(WP[HOME].Lat);
-         i2c_write(*ptr++);
-         i2c_write(*ptr++);
-         i2c_write(*ptr++);
-         i2c_write(*ptr);
-
-         ptr = (uint8_t*)&(WP[HOME].Lon);
-         i2c_write(*ptr++);
-         i2c_write(*ptr++);
-         i2c_write(*ptr++);
-         i2c_write(*ptr);
-         #endif
-
-         f.GPS_HOME_MODE = 0;          // with this flag, GPS_set_next_wp will be called in the next loop -- OK with SERIAL GPS / OK with I2C GPS
-         f.GPS_FIX_HOME  = 1;
-         if (alt != 0) 
-             WP[HOME].Alt = alt;           // temporary implementation to test feature with apps
-             WP[HOME].Vario = RTH_VARIO;   // vario can be inserted here instead of predefined
-             WP[HOME].Updated = 1;         // HOME WP is updated
-       } else if (wp_no == 16) {       // OK with SERIAL GPS  --  NOK for I2C GPS / needs more code dev in order to inject GPS coord inside I2C GPS
-         WP[HOLD].Lat = lat;
-         WP[HOLD].Lon = lon;
-         if (alt != 0) 
-             WP[HOLD].Alt   = alt;         // temporary implementation to test feature with apps
-             WP[HOLD].Vario = WP_VARIO;    // vario can be inserted here instead of predefined
-             WP[HOLD].Updated = 1;         // HOLD WP is updated
-         #if defined(I2C_GPS)
+#if defined(USE_MSP_WP)
+    case MSP_WP:
+    {
+        int32_t lat = 0, lon = 0;
+        uint8_t wp_no = read8();        //get the wp number
+        headSerialReply(18);
+        if (wp_no == 0)
+        {
+            lat = WP[HOME].Lat;
+            lon = WP[HOME].Lon;
+        }
+        else if (wp_no == 16)
+        {
+            lat = WP[HOLD].Lat;
+            lon = WP[HOLD].Lon;
+        }
+        serialize8(wp_no);
+        serialize32(lat);
+        serialize32(lon);
+        serialize32(alt.AltHold / 10);      //altitude (cm) will come here -- temporary implementation to test feature with apps
+        serialize16(0);                 //heading  will come here (deg)
+        serialize16(0);                 //time to stay (ms) will come here
+        serialize8(0);                  //nav flag will come here
+    }
+    break;
+    case MSP_SET_WP:
+    {
+        int32_t lat = 0, lon = 0, alt = 0;
+        uint8_t wp_no = read8();        //get the wp number
+        lat = read32();
+        lon = read32();
+        alt = read32();                 // to set altitude (cm)
+        read16();                       // future: to set heading (deg)
+        read16();                       // future: to set time to stay (ms)
+        read8();                        // future: to set nav flag
+        if (wp_no == 0)
+        {
+            WP[HOME].Lat = lat;
+            WP[HOME].Lon = lon;
+#if defined(I2C_GPS)        // by Erik
             i2c_rep_start(I2C_GPS_ADDRESS << 1);
-            i2c_write(I2C_GPS_WP1);  // Shall I use this waypoint?
-            uint8_t* ptr = (uint8_t*)&(WP[HOLD].Lat);
+            i2c_write(I2C_GPS_WP0);
+            uint8_t *ptr = (uint8_t *) & (WP[HOME].Lat);
             i2c_write(*ptr++);
             i2c_write(*ptr++);
             i2c_write(*ptr++);
             i2c_write(*ptr);
 
-            ptr = (uint8_t*)&(WP[HOLD].Lon);
+            ptr = (uint8_t *) & (WP[HOME].Lon);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr);
+#endif
+            f.GPS_HOME_MODE = 0;          // with this flag, GPS_set_next_wp will be called in the next loop -- OK with SERIAL GPS / OK with I2C GPS
+            f.GPS_FIX_HOME  = 1;
+            if (alt != 0)
+            {
+                WP[HOME].Alt = alt;           // temporary implementation to test feature with apps
+                WP[HOME].Vario = RTH_VARIO;   // vario can be inserted here instead of predefined
+                WP[HOME].Updated = 1;         // HOME WP is updated
+            }
+        }
+        else if (wp_no == 16)           // OK with SERIAL GPS  --  NOK for I2C GPS / needs more code dev in order to inject GPS coord inside I2C GPS
+        {
+            WP[HOLD].Lat = lat;
+            WP[HOLD].Lon = lon;
+#if defined(I2C_GPS)          // by Erik
+            i2c_rep_start(I2C_GPS_ADDRESS << 1);
+            i2c_write(I2C_GPS_WP1);  // Shall I use this waypoint?
+            uint8_t *ptr = (uint8_t *) & (WP[HOLD].Lat);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr++);
+            i2c_write(*ptr);
+
+            ptr = (uint8_t *) & (WP[HOLD].Lon);
             i2c_write(*ptr++);
             i2c_write(*ptr++);
             i2c_write(*ptr++);
@@ -599,16 +566,21 @@ void evaluateCommand()
 
             GPS_I2C_command(I2C_GPS_COMMAND_START_NAV, 1);
             nav_mode      = NAV_MODE_WP;
-         #else
+#else
             nav_mode      = NAV_MODE_WP;
-           GPS_set_next_wp(&WP[HOLD].Lat,&WP[HOLD].Lon);
-         #endif
-       }
-     }
-     headSerialReply(0);
-     break;
-   #endif
-
+            GPS_set_next_wp(&WP[HOLD].Lat, &WP[HOLD].Lon);
+#endif
+            if (alt != 0)
+            {
+                WP[HOLD].Alt   = alt;         // temporary implementation to test feature with apps
+                WP[HOLD].Vario = WP_VARIO;    // vario can be inserted here instead of predefined
+                WP[HOLD].Updated = 1;         // HOLD WP is updated
+            }
+        }
+    }
+    headSerialReply(0);
+    break;
+#endif
     case MSP_RESET_CONF:
         if (!f.ARMED) LoadDefaults();
         headSerialReply(0);
@@ -632,11 +604,7 @@ void evaluateCommand()
         headSerialReply(0);
         break;
     case MSP_DEBUG:
-        headSerialReply(8);
-        for (uint8_t i = 0; i < 4; i++)
-        {
-            serialize16(debug[i]); // 4 variables are here for general monitoring purpose
-        }
+        s_struct((uint8_t *)&debug, 8);
         break;
 #ifdef DEBUGMSG
     case MSP_DEBUGMSG:
@@ -653,12 +621,7 @@ void evaluateCommand()
         break;
     }
 
-#if defined(RCSERIAL)
-#if defined(RCSERIAL_RC_OFFLOAD)
-    if (cmdMSP[CURRENTPORT] != MSP_SET_RAW_RC_REPEAT)
-#endif
-#endif
-        tailSerialReply();
+    tailSerialReply();
 }
 #endif // SUPPRESS_ALL_SERIAL_MSP
 

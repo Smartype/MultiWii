@@ -28,8 +28,6 @@ static uint8_t rcChannel[RC_CHANS]  = {ROLLPIN, PITCHPIN, YAWPIN, THROTTLEPIN, A
 static uint8_t PCInt_RX_Pins[PCINT_PIN_COUNT] = {PCINT_RX_BITS}; // if this slowes the PCINT readings we can switch to a define for each pcint bit
 #endif
 
-#define FAILSAFE_DETECT_TRESHOLD  985
-
 /**************************************************************************************/
 /***************                   RX Pin Setup                    ********************/
 /**************************************************************************************/
@@ -453,7 +451,7 @@ ISR(PCINT0_vect)
         if (rc4ValuesIndex == 4) rc4ValuesIndex = 0;
         for (chan = 0; chan < RC_CHANS; chan++)
         {
-#if defined(FAILSAFE) 
+#if defined(FAILSAFE)
             uint16_t rcval = readRawRC(chan);
             if (rcval > FAILSAFE_DETECT_TRESHOLD || chan > 3)       // update controls channel only if pulse is above FAILSAFE_DETECT_TRESHOLD
             {
